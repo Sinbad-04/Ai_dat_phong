@@ -39,7 +39,11 @@ export async function GET(req: Request) {
   try {
     const content = await getHotelContent(hotelId);
     // Mô tả từ LiteAPI là tiếng Anh -> dịch sang tiếng Việt và lọc nội dung code/prompt bất thường.
-    const description = await translateToVietnamese(content.description, content.name);
+    const description = await translateToVietnamese(content.description, {
+      hotelName: content.name,
+      city: content.city,
+      facilities: content.facilities,
+    });
     return NextResponse.json(
       { content: { ...content, description } },
       { headers: { "Cache-Control": "no-store" } }
