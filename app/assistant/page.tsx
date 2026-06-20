@@ -136,6 +136,10 @@ function AssistantInner() {
               {m.suggestedHotels && m.suggestedHotels.length > 0 && (
                 <div className="mt-3 grid sm:grid-cols-2 gap-3">
                   {m.suggestedHotels.map((h) => {
+                    const nights = Math.max(
+                      1,
+                      Math.round((+new Date(h.checkOut) - +new Date(h.checkIn)) / 86400000)
+                    );
                     const qs = new URLSearchParams({
                       hotelId: h.hotelId, offerId: h.offerId, name: h.name, room: h.rateName || "",
                       checkIn: h.checkIn, checkOut: h.checkOut, guests: String(h.guests),
@@ -162,10 +166,15 @@ function AssistantInner() {
                             {fmtDate(h.checkIn)} → {fmtDate(h.checkOut)} · {h.guests} khách
                           </div>
                           <div className="flex items-center justify-between mt-1.5">
-                            <span className="font-mono text-xs text-teal">{money(h.price, h.currency)}</span>
+                            <span className="font-mono text-xs text-teal">
+                              {money(Math.round(h.price / nights), h.currency)}/đêm
+                            </span>
                             {typeof h.rating === "number" && h.rating > 0 && (
                               <span className="text-[11px] text-jade">⭐ {h.rating.toFixed(1)}/10</span>
                             )}
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-ink/45">
+                            Tổng {money(h.price, h.currency)} cho {nights} đêm
                           </div>
                           <span className="mt-2 inline-block btn-gold text-xs px-3 py-1.5">Chi tiết</span>
                         </div>

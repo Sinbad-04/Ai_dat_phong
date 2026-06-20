@@ -12,6 +12,30 @@ function ymd(daysFromNow: number): string {
   return new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
 }
 
+function parseMaxNightlyBudget(text: string): number | null {
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+  const match = normalized.match(
+    /(?:<=|<|duoi|toi da|khong qua|nho hon)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k|vnd|d)?\b/i
+  );
+  if (!match) return null;
+
+  const value = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const unit = match[2] || "";
+  if (unit === "trieu" || unit === "tr") return Math.round(value * 1_000_000);
+  if (["nghin", "ngan", "k"].includes(unit)) return Math.round(value * 1_000);
+  if (unit === "vnd" || unit === "d" || value >= 10_000) return Math.round(value);
+  return null;
+}
+
+function formatVnd(value: number): string {
+  return `${new Intl.NumberFormat("vi-VN").format(Math.round(value))}đ`;
+}
+
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -41,6 +65,8 @@ export async function POST(req: Request) {
   if (dest && isConfigured()) {
     const checkIn = ymd(7);
     const checkOut = ymd(9);
+    const nights = 2;
+    const maxNightlyBudget = parseMaxNightlyBudget(lastUser);
     const hotelsUrl = `/hotels?dest=${encodeURIComponent(`${dest.cityName}|${dest.countryCode}`)}`;
     try {
       // Timeout tổng: dù LiteAPI chậm, chat vẫn phản hồi trong ~18s.
@@ -58,8 +84,11 @@ export async function POST(req: Request) {
           setTimeout(() => reject(new Error("LiteAPI timeout (chat)")), 18000)
         ),
       ]);
-      if (hotels.length > 0) {
-        const suggestedHotels = hotels.slice(0, 4).map((h) => ({
+      const matchingHotels = maxNightlyBudget
+        ? hotels.filter((hotel) => hotel.price / nights <= maxNightlyBudget)
+        : hotels;
+      if (matchingHotels.length > 0) {
+        const suggestedHotels = matchingHotels.slice(0, 4).map((h) => ({
           hotelId: h.hotelId,
           offerId: h.offerId,
           name: h.name,
@@ -75,12 +104,26 @@ export async function POST(req: Request) {
           checkOut: h.checkout,
           guests: 2,
         }));
+        const budgetText = maxNightlyBudget
+          ? `, đúng mức dưới **${formatVnd(maxNightlyBudget)}/đêm**`
+          : "";
         const reply =
-          `Đây là vài khách sạn thật ở **${dest.label}** mình tìm được ` +
+          `Đây là vài khách sạn thật ở **${dest.label}** mình tìm được${budgetText} ` +
           `(ngày mặc định ${checkIn} → ${checkOut}, 2 khách). ` +
           `Bấm **Chi tiết** để xem ảnh, mô tả & đặt; hoặc mở trang **Khách sạn** để đổi ngày/số khách. ` +
           `Mình vẫn có thể tư vấn thêm nếu bạn muốn so sánh hoặc cần ưu đãi nhé.`;
         return NextResponse.json({ reply, mode: "liteapi", suggestedHotels });
+      }
+      if (hotels.length > 0 && maxNightlyBudget) {
+        const cheapestNightly = Math.min(...hotels.map((hotel) => hotel.price / nights));
+        return NextResponse.json({
+          reply:
+            `Mình chưa tìm thấy phòng ở **${dest.label}** dưới **${formatVnd(maxNightlyBudget)}/đêm** ` +
+            `cho ngày mặc định ${checkIn} → ${checkOut}. Giá thấp nhất hiện tại khoảng ` +
+            `**${formatVnd(cheapestNightly)}/đêm**. Bạn có thể đổi ngày trên trang ` +
+            `**[Khách sạn](${hotelsUrl})** để tìm mức giá khác.`,
+          mode: "liteapi",
+        });
       }
       // Không có kết quả -> vẫn hướng khách sang trang Khách sạn
       return NextResponse.json({
