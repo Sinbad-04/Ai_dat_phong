@@ -20,13 +20,14 @@ export type RoomCardData = {
 };
 
 export default function RoomCard({ room, compact = false }: { room: RoomCardData; compact?: boolean }) {
+  const detailsHref = `/rooms/${room.id}`;
   const bookingHref = `/bookings?room=${room.id}`;
 
   return (
     <article className="card group relative flex flex-col overflow-hidden transition hover:-translate-y-0.5 hover:shadow-lg">
       <Link
-        href={bookingHref}
-        aria-label={`Xem và đặt ${room.name}`}
+        href={detailsHref}
+        aria-label={`Xem thông tin ${room.name}`}
         className="absolute inset-0 z-10 rounded-[inherit] focus:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2"
       />
       <div className="relative grid h-36 place-items-center overflow-hidden bg-gradient-to-br from-teal to-jade text-4xl">

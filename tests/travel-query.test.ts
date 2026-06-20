@@ -35,6 +35,7 @@ test("only recognizes explicit trip purposes and room requests", () => {
 test("recognizes destination follow-up questions", () => {
   assert.equal(asksAboutDestinationHighlights("Ở đây có gì đẹp?"), true);
   assert.equal(asksAboutDestinationHighlights("Ở Phú Quốc tầm này có gì hay?"), true);
+  assert.equal(asksAboutDestinationHighlights("Tầm này ở Phú Quốc có gì vui không?"), true);
   assert.equal(wantsDifferentArea("Chỗ khác đi"), true);
 });
 
