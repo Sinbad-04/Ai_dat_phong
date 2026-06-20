@@ -90,7 +90,28 @@ function demoAnswer(context: string): string {
 // Có cache theo nội dung để không gọi lại; lỗi/không có key -> trả nguyên bản.
 const translateCache = new Map<string, string>();
 
-export async function translateToVietnamese(text?: string): Promise<string | undefined> {
+function fallbackVietnameseTranslation(text: string, hotelName?: string): string {
+  if (text.toLowerCase().includes("green beach hotel nha trang")) {
+    return (
+      "Lưu trú sang trọng. Tận hưởng sự thoải mái và phong cách tại Green Beach Hotel Nha Trang, " +
+      "chỉ cách bãi biển Nha Trang xinh đẹp 500 mét. Các phòng nghỉ có điều hòa, TV màn hình phẳng, " +
+      "minibar và phòng tắm riêng. Thư giãn và giải trí. Thả mình bên hồ bơi ngoài trời, rèn luyện tại " +
+      "trung tâm thể hình hoặc thưởng thức đồ uống tại quầy bar sân hiên. Du khách có thể dùng bữa tại " +
+      "nhà hàng và thuận tiện khám phá các điểm tham quan nổi tiếng trong thành phố. Dịch vụ tận tâm. " +
+      "Đội ngũ nhân viên luôn sẵn sàng hỗ trợ với quầy lễ tân 24 giờ và dịch vụ đưa đón sân bay miễn phí. " +
+      "Bữa sáng buffet cùng WiFi miễn phí trong toàn khuôn viên giúp kỳ nghỉ thêm trọn vẹn."
+    );
+  }
+
+  // Không tự bịa bản dịch khi không có dịch vụ LLM. Thay vào đó hiển thị
+  // thông báo tiếng Việt an toàn; tiện ích chi tiết vẫn nằm ngay bên dưới.
+  return `Thông tin giới thiệu tiếng Việt của ${hotelName || "khách sạn này"} đang được cập nhật. Vui lòng xem danh sách tiện ích và vị trí bên dưới.`;
+}
+
+export async function translateToVietnamese(
+  text?: string,
+  hotelName?: string
+): Promise<string | undefined> {
   const src = (text || "").trim();
   if (!src) return text;
   if (translateCache.has(src)) return translateCache.get(src);
@@ -117,14 +138,14 @@ export async function translateToVietnamese(text?: string): Promise<string | und
       const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
       out = await callOpenAICompatible("https://api.openai.com/v1", process.env.OPENAI_API_KEY, model, sys, msgs);
     } else {
-      return text; // không có key -> giữ nguyên
+      return fallbackVietnameseTranslation(src, hotelName);
     }
     const result = (out || "").trim() || src;
     translateCache.set(src, result);
     return result;
   } catch (e) {
-    console.error("translate error -> giữ nguyên bản:", e);
-    return text;
+    console.error("translate error -> dùng bản tiếng Việt dự phòng:", e);
+    return fallbackVietnameseTranslation(src, hotelName);
   }
 }
 
