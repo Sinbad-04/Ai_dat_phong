@@ -23,6 +23,33 @@ export function declinesBudgetFilter(text: string): boolean {
   return ["khong gioi han ngan sach", "xem tat ca muc gia", "bo qua ngan sach", "chua co ngan sach"].some((item) => value.includes(item));
 }
 
+export function hasExplicitTripPurpose(text: string): boolean {
+  const value = normalize(text);
+  return [
+    "nghi duong",
+    "trang mat",
+    "honeymoon",
+    "gia dinh",
+    "cong tac",
+    "kham pha",
+    "city tour",
+    "du lich bien",
+    "du lich nui",
+  ].some((purpose) => value.includes(purpose));
+}
+
+export function asksForRoomRecommendation(text: string): boolean {
+  const value = normalize(text);
+  return [
+    "goi y phong",
+    "tu van phong",
+    "phong nao",
+    "chon phong",
+    "dat phong",
+    "hang phong",
+  ].some((intent) => value.includes(intent));
+}
+
 export function parseMaxNightlyBudget(text: string): number | null {
   const match = normalize(text).match(
     /(?:<=|<|duoi|toi da|khong qua|nho hon)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k|vnd|d)?\b/i

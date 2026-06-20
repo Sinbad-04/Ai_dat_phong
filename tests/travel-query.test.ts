@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   declinesAreaPreference,
   declinesBudgetFilter,
+  asksForRoomRecommendation,
+  hasExplicitTripPurpose,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
@@ -19,6 +21,13 @@ test("recognizes short greetings without treating normal requests as greetings",
 test("recognizes optional search filters being skipped", () => {
   assert.equal(declinesAreaPreference("Khu nào cũng được"), true);
   assert.equal(declinesBudgetFilter("Xem tất cả mức giá"), true);
+});
+
+test("only recognizes explicit trip purposes and room requests", () => {
+  assert.equal(hasExplicitTripPurpose("Tôi đi nghỉ dưỡng cùng gia đình"), true);
+  assert.equal(hasExplicitTripPurpose("Bạn có thể làm gì?"), false);
+  assert.equal(asksForRoomRecommendation("Gợi ý phòng phù hợp giúp tôi"), true);
+  assert.equal(asksForRoomRecommendation("Gợi ý điểm đến"), false);
 });
 
 test("detects and matches specific hotel areas", () => {

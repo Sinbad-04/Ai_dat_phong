@@ -15,6 +15,8 @@ import { isConfigured, searchHotels } from "@/lib/liteapi";
 import {
   declinesAreaPreference,
   declinesBudgetFilter,
+  asksForRoomRecommendation,
+  hasExplicitTripPurpose,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
@@ -234,9 +236,22 @@ export async function POST(req: Request) {
 
   // Gợi ý phòng để hiển thị thẻ: ưu tiên phòng được nhắc tên trong câu trả lời,
   // sau đó tới phòng nằm trong tri thức truy xuất.
-  const mentioned = ROOMS.filter((r) => text.toLowerCase().includes(r.name.toLowerCase())).map((r) => r.id);
-  const fromDocs = docs.filter((d) => d.category === "room").map((d) => d.id.replace("room-", ""));
+  const assistantAskedPurpose = messages.slice(0, -1).some(
+    (message) => message.role === "assistant" && /kiểu du lịch|mục đích chuyến đi/i.test(message.content)
+  );
+  const shouldSuggestRooms = asksForRoomRecommendation(lastUser)
+    || (hasExplicitTripPurpose(lastUser) && assistantAskedPurpose);
+  const mentioned = shouldSuggestRooms
+    ? ROOMS.filter((r) => text.toLowerCase().includes(r.name.toLowerCase())).map((r) => r.id)
+    : [];
+  const fromDocs = shouldSuggestRooms
+    ? docs.filter((d) => d.category === "room").map((d) => d.id.replace("room-", ""))
+    : [];
   const suggestedRoomIds = Array.from(new Set([...mentioned, ...fromDocs])).slice(0, 3);
 
-  return NextResponse.json({ reply: text, mode, suggestedRoomIds });
+  return NextResponse.json({
+    reply: text,
+    mode,
+    ...(suggestedRoomIds.length > 0 ? { suggestedRoomIds } : {}),
+  });
 }
