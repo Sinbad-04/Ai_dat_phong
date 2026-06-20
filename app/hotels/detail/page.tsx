@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { money, fmtDate } from "@/lib/format";
+import { buildComparison } from "@/lib/pricecompare";
 
 type Content = {
   name?: string;
@@ -134,6 +135,20 @@ function DetailInner() {
       ? `https://www.google.com/maps?q=${encodeURIComponent(c.address + " " + (c.city || ""))}&z=14&output=embed`
       : null;
 
+  const showCompare = !!offer.offerId && !offer.offerId.startsWith("static-") && offer.price > 0;
+  const compareRows = showCompare
+    ? buildComparison({
+        hotelName: c.name || offer.name,
+        city: c.city,
+        checkIn: offer.checkIn,
+        checkOut: offer.checkOut,
+        guests: offer.guests,
+        ourPrice: offer.price,
+        currency: offer.currency,
+      })
+    : [];
+  const minPrice = compareRows.length ? Math.min(...compareRows.map((row) => row.price)) : 0;
+
   return (
     <div className="container-px py-8">
       <button className="text-sm text-ink/55 hover:text-teal" onClick={() => router.back()}>← Quay lại danh sách</button>
@@ -212,6 +227,62 @@ function DetailInner() {
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
+            </section>
+          )}
+
+          {showCompare && (
+            <section className="mt-8">
+              <h2 className="font-display text-xl text-teal">So sánh giá các nền tảng</h2>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-teal/12">
+                {compareRows.map((row) => {
+                  const cheapest = row.price === minPrice;
+                  return (
+                    <div
+                      key={row.platform}
+                      className={`flex items-center justify-between gap-3 px-4 py-3 ${
+                        row.ours ? "bg-jade/8" : "border-t border-teal/8"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm ${row.ours ? "font-semibold text-teal" : "text-ink/75"}`}>
+                          {row.platform}
+                        </span>
+                        {cheapest && (
+                          <span className="rounded-full bg-jade/15 px-2 py-0.5 text-[10px] font-semibold text-jade">
+                            Rẻ nhất
+                          </span>
+                        )}
+                        {row.estimated && (
+                          <span className="rounded-full bg-ink/8 px-2 py-0.5 text-[10px] text-ink/50">
+                            ước tính
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm text-teal">{money(row.price, row.currency)}</span>
+                        {row.ours ? (
+                          <button className="btn-primary px-3 py-1.5 text-xs" onClick={book} disabled={busy}>
+                            {busy ? "…" : "Đặt ngay"}
+                          </button>
+                        ) : (
+                          <a
+                            href={row.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg border border-teal/20 px-3 py-1.5 text-xs text-teal hover:bg-teal/5"
+                          >
+                            Kiểm tra →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-ink/50">
+                Giá tại web là giá thật, đặt được ngay. Giá các nền tảng khác là <b>ước tính minh hoạ</b>;
+                bấm “Kiểm tra” để mở trang tìm kiếm thật và đối chiếu.
+              </p>
             </section>
           )}
         </div>
