@@ -11,10 +11,6 @@ import { parseGuests, parseMaxNightlyBudget, parseStayDates } from "@/lib/travel
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { createOfferToken } from "@/lib/offer-token";
 
-function ymd(daysFromNow: number): string {
-  return new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
-}
-
 function formatVnd(value: number): string {
   return `${new Intl.NumberFormat("vi-VN").format(Math.round(value))}đ`;
 }
@@ -45,8 +41,7 @@ export async function POST(req: Request) {
   const messages = parsed.data.messages as ChatMsg[];
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
 
-  // KHÁCH SẠN THẬT: nếu khách nhắc tới một thành phố (ngoài resort), tự gọi LiteAPI
-  // và trả về danh sách khách sạn thật ngay trong khung chat (ngày mặc định +7/+9, 2 khách).
+  // KHÁCH SẠN THẬT: thu thập đủ thông tin cơ bản trước khi gọi LiteAPI.
   const userMessages = messages.filter((message) => message.role === "user").map((message) => message.content);
   const latestValue = <T,>(parser: (value: string) => T | null | undefined): T | null => {
     for (const value of [...userMessages].reverse()) {
@@ -56,13 +51,35 @@ export async function POST(req: Request) {
     return null;
   };
   const dest = detectDestination(lastUser) || latestValue(detectDestination) || undefined;
+  const parsedDates = latestValue(parseStayDates);
+  const parsedGuests = latestValue(parseGuests);
+  const maxNightlyBudget = latestValue(parseMaxNightlyBudget);
+
+  if (dest && (!parsedDates || !parsedGuests)) {
+    const missing = [
+      !parsedDates ? "- **Ngày nhận và trả phòng** (ví dụ: 10/07 đến 12/07)" : null,
+      !parsedGuests ? "- **Số khách** (người lớn và trẻ em nếu có)" : null,
+    ].filter(Boolean).join("\n");
+    const quickReplies = !parsedGuests
+      ? ["2 người, dưới 1 triệu/đêm", "2 người, từ 1 đến 2 triệu/đêm", "Gia đình 4 người, dưới 2 triệu/đêm"]
+      : [];
+
+    return NextResponse.json({
+      reply:
+        `Được nhé, bạn muốn đi **${dest.label}**. Trước khi tìm khách sạn, mình cần thêm:\n\n` +
+        `${missing}\n\n` +
+        `Bạn cũng có thể cho biết **ngân sách mỗi đêm** và ưu tiên như gần biển, hồ bơi hoặc gần trung tâm. ` +
+        `Ví dụ: “10/07 đến 12/07, 2 người, dưới 1 triệu/đêm, gần biển”.`,
+      mode: "clarify",
+      quickReplies,
+    });
+  }
+
   if (dest && isConfigured()) {
-    const parsedDates = latestValue(parseStayDates);
-    const checkIn = parsedDates?.checkIn || ymd(7);
-    const checkOut = parsedDates?.checkOut || ymd(9);
+    const checkIn = parsedDates!.checkIn;
+    const checkOut = parsedDates!.checkOut;
     const nights = Math.max(1, Math.round((+new Date(checkOut) - +new Date(checkIn)) / 86_400_000));
-    const guests = latestValue(parseGuests) || 2;
-    const maxNightlyBudget = latestValue(parseMaxNightlyBudget);
+    const guests = parsedGuests!;
     const hotelsUrl = `/hotels?dest=${encodeURIComponent(`${dest.cityName}|${dest.countryCode}`)}`;
     try {
       // Timeout tổng: dù LiteAPI chậm, chat vẫn phản hồi trong ~18s.
@@ -114,7 +131,7 @@ export async function POST(req: Request) {
           : "";
         const reply =
           `Đây là vài khách sạn thật ở **${dest.label}** mình tìm được${budgetText} ` +
-          `(${parsedDates ? "ngày yêu cầu" : "ngày mặc định"} ${checkIn} → ${checkOut}, ${guests} khách). ` +
+          `(${checkIn} → ${checkOut}, ${guests} khách). ` +
           `Bấm **Chi tiết** để xem ảnh, mô tả & đặt; hoặc mở trang **Khách sạn** để đổi ngày/số khách. ` +
           `Mình vẫn có thể tư vấn thêm nếu bạn muốn so sánh hoặc cần ưu đãi nhé.`;
         return NextResponse.json({ reply, mode: "liteapi", suggestedHotels });
@@ -124,7 +141,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
           reply:
             `Mình chưa tìm thấy phòng ở **${dest.label}** dưới **${formatVnd(maxNightlyBudget)}/đêm** ` +
-            `cho ngày mặc định ${checkIn} → ${checkOut}. Giá thấp nhất hiện tại khoảng ` +
+            `cho ngày ${checkIn} → ${checkOut}. Giá thấp nhất hiện tại khoảng ` +
             `**${formatVnd(cheapestNightly)}/đêm**. Bạn có thể đổi ngày trên trang ` +
             `**[Khách sạn](${hotelsUrl})** để tìm mức giá khác.`,
           mode: "liteapi",
@@ -133,7 +150,7 @@ export async function POST(req: Request) {
       // Không có kết quả -> vẫn hướng khách sang trang Khách sạn
       return NextResponse.json({
         reply:
-          `Mình chưa tìm thấy phòng trống ở **${dest.label}** cho ngày mặc định (${checkIn} → ${checkOut}). ` +
+          `Mình chưa tìm thấy phòng trống ở **${dest.label}** cho ngày ${checkIn} → ${checkOut}. ` +
           `Bạn mở trang **[Khách sạn](${hotelsUrl})** để đổi ngày/số khách và tìm lại nhé. ` +
           `Hoặc mình tư vấn phòng tại An Lành Bay (Cam Ranh) nếu bạn muốn.`,
         mode: "liteapi",

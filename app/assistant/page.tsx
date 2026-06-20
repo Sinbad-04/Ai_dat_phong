@@ -14,6 +14,7 @@ type Hotel = {
 type Msg = {
   role: "user" | "assistant"; content: string;
   suggestedRoomIds?: string[]; suggestedHotels?: Hotel[];
+  quickReplies?: string[];
 };
 type Room = {
   id: string; name: string; type: string; capacity: number; basePrice: number; view: string; image: string;
@@ -83,6 +84,7 @@ function AssistantInner() {
             content: data.reply,
             suggestedRoomIds: data.suggestedRoomIds,
             suggestedHotels: data.suggestedHotels,
+            quickReplies: data.quickReplies,
           },
         ]);
       } catch {
@@ -206,6 +208,20 @@ function AssistantInner() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {m.role === "assistant" && m.quickReplies && m.quickReplies.length > 0 && i === messages.length - 1 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {m.quickReplies.map((reply) => (
+                    <button
+                      key={reply}
+                      onClick={() => send(reply)}
+                      disabled={loading}
+                      className="text-xs rounded-full border border-teal/20 bg-white/80 px-3 py-1.5 text-teal hover:border-teal hover:bg-teal/5 transition disabled:opacity-50"
+                    >
+                      {reply}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
