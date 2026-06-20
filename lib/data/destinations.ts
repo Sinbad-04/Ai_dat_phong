@@ -9,6 +9,7 @@ export type DestinationArea = {
   countryCode: string;
   keywords: string[];
 };
+export type AreaGuide = { reason: string; highlights: string[] };
 
 export const DESTINATIONS: Destination[] = [
   // Việt Nam
@@ -47,6 +48,32 @@ export const DESTINATION_AREAS: DestinationArea[] = [
   { value: "ho-tuyen-lam", label: "Hồ Tuyền Lâm", cityName: "Da Lat", countryCode: "VN", keywords: ["hồ tuyền lâm", "ho tuyen lam", "tuyen lam"] },
   { value: "trung-tam-da-lat", label: "Trung tâm Đà Lạt", cityName: "Da Lat", countryCode: "VN", keywords: ["trung tâm đà lạt", "trung tam da lat", "chợ đà lạt", "da lat market"] },
 ];
+
+const AREA_GUIDES: Record<string, AreaGuide> = {
+  "ho-tay": { reason: "không gian thoáng, ngắm hoàng hôn đẹp và vẫn thuận tiện vào trung tâm Hà Nội", highlights: ["Dạo ven Hồ Tây và đường Thanh Niên", "Chùa Trấn Quốc", "Quán cà phê và nhà hàng ven hồ"] },
+  "hoan-kiem": { reason: "phù hợp người muốn đi bộ khám phá văn hóa, ẩm thực và các điểm nổi tiếng của Hà Nội", highlights: ["Hồ Hoàn Kiếm và đền Ngọc Sơn", "Phố cổ Hà Nội", "Chợ Đồng Xuân và phố ẩm thực"] },
+  "ba-dinh": { reason: "yên tĩnh hơn phố cổ và gần nhiều công trình lịch sử quan trọng", highlights: ["Lăng Chủ tịch Hồ Chí Minh", "Văn Miếu – Quốc Tử Giám", "Hoàng thành Thăng Long"] },
+  "cau-giay": { reason: "hiện đại, dễ di chuyển và có nhiều lựa chọn ăn uống, mua sắm", highlights: ["Bảo tàng Dân tộc học", "Công viên Cầu Giấy", "Các trung tâm thương mại lớn"] },
+  "my-khe": { reason: "thích hợp nghỉ biển, ngắm bình minh và dễ tiếp cận trung tâm Đà Nẵng", highlights: ["Bãi biển Mỹ Khê", "Công viên Biển Đông", "Nhà hàng hải sản ven biển"] },
+  "son-tra": { reason: "kết hợp biển, thiên nhiên và góc nhìn toàn cảnh thành phố", highlights: ["Bán đảo Sơn Trà", "Chùa Linh Ứng", "Đỉnh Bàn Cờ"] },
+  "ngu-hanh-son": { reason: "phù hợp chuyến đi nghỉ dưỡng yên tĩnh, gần biển và danh thắng", highlights: ["Danh thắng Ngũ Hành Sơn", "Làng đá Non Nước", "Bãi biển Non Nước"] },
+  "hai-chau": { reason: "thuận tiện ăn uống, mua sắm và khám phá nhịp sống trung tâm Đà Nẵng", highlights: ["Cầu Rồng", "Chợ Hàn", "Bảo tàng Điêu khắc Chăm"] },
+  "tran-phu": { reason: "nằm ngay trục biển trung tâm, tiện tắm biển và đi bộ buổi tối", highlights: ["Bãi biển Nha Trang", "Quảng trường 2/4", "Tháp Trầm Hương"] },
+  "hon-chong": { reason: "có cảnh biển đẹp, không khí thư thả và ít náo nhiệt hơn trung tâm", highlights: ["Danh thắng Hòn Chồng", "Bãi biển Hòn Chồng", "Tháp Bà Ponagar"] },
+  "vinh-hai": { reason: "phù hợp kỳ nghỉ yên tĩnh với nhiều lựa chọn lưu trú gần biển", highlights: ["Bãi biển phía bắc Nha Trang", "Chợ Vĩnh Hải", "Dễ đi Hòn Chồng và Tháp Bà"] },
+  "quan-1": { reason: "ở ngay trung tâm, thuận tiện tham quan, mua sắm và trải nghiệm ẩm thực", highlights: ["Phố đi bộ Nguyễn Huệ", "Dinh Độc Lập", "Chợ Bến Thành"] },
+  "thao-dien": { reason: "không gian hiện đại, nhiều quán cà phê và nhà hàng quốc tế ven sông", highlights: ["Khu ven sông Sài Gòn", "Các tổ hợp mua sắm – ẩm thực", "Nhiều quán cà phê phong cách"] },
+  "phu-nhuan": { reason: "gần sân bay, dễ vào trung tâm và có nhiều món ăn địa phương", highlights: ["Các tuyến ẩm thực Phan Xích Long", "Dễ di chuyển ra sân bay", "Thuận tiện đến Quận 1 và Quận 3"] },
+  "duong-dong": { reason: "sôi động, tiện ăn uống và phù hợp người muốn khám phá đời sống địa phương", highlights: ["Chợ đêm Phú Quốc", "Dinh Cậu", "Bãi Dinh Cậu"] },
+  "bai-truong": { reason: "bờ biển dài, hoàng hôn đẹp và vị trí thuận tiện giữa sân bay với Dương Đông", highlights: ["Ngắm hoàng hôn trên biển", "Các beach club và nhà hàng ven biển", "Dễ di chuyển đến sân bay và trung tâm Dương Đông"] },
+  "ong-lang": { reason: "yên tĩnh, nhiều cây xanh và hợp với kỳ nghỉ thư giãn", highlights: ["Bãi Ông Lang", "Ngắm hoàng hôn", "Các resort và nhà hàng trong không gian xanh"] },
+  "ho-tuyen-lam": { reason: "không khí trong lành, cảnh hồ và rừng thông phù hợp nghỉ dưỡng", highlights: ["Hồ Tuyền Lâm", "Thiền viện Trúc Lâm", "Các cung đường rừng thông"] },
+  "trung-tam-da-lat": { reason: "dễ đi bộ, ăn uống và kết nối tới nhiều điểm tham quan", highlights: ["Chợ Đà Lạt", "Hồ Xuân Hương", "Quảng trường Lâm Viên"] },
+};
+
+export function guideForArea(area: DestinationArea): AreaGuide | undefined {
+  return AREA_GUIDES[area.value];
+}
 
 export function findDestination(key: string): Destination | undefined {
   return DESTINATIONS.find((d) => `${d.cityName}|${d.countryCode}` === key);

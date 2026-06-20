@@ -23,6 +23,23 @@ export function declinesBudgetFilter(text: string): boolean {
   return ["khong gioi han ngan sach", "xem tat ca muc gia", "bo qua ngan sach", "chua co ngan sach"].some((item) => value.includes(item));
 }
 
+export function asksAboutDestinationHighlights(text: string): boolean {
+  const value = normalize(text);
+  return [
+    "o day co gi",
+    "co gi dep",
+    "co gi choi",
+    "di dau choi",
+    "tai sao nen den",
+    "co gi thu vi",
+  ].some((intent) => value.includes(intent));
+}
+
+export function wantsDifferentArea(text: string): boolean {
+  const value = normalize(text);
+  return ["cho khac", "khu khac", "dia diem khac", "doi khu vuc"].some((intent) => value.includes(intent));
+}
+
 export function hasExplicitTripPurpose(text: string): boolean {
   const value = normalize(text);
   return [
@@ -78,6 +95,19 @@ function ymd(year: number, month: number, day: number): string {
 export function parseStayDates(text: string, now = new Date()): { checkIn: string; checkOut: string } | null {
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\D+(20\d{2}-\d{2}-\d{2})\b/);
   if (iso && !validateStayDates(iso[1], iso[2]).error) return { checkIn: iso[1], checkOut: iso[2] };
+
+  const compact = normalize(text).match(/\b(\d{1,2})\s*(?:-|–|—|den|toi)\s*(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/);
+  if (compact) {
+    let year = Number(compact[4] || now.getFullYear());
+    let checkIn = ymd(year, Number(compact[3]), Number(compact[1]));
+    let checkOut = ymd(year, Number(compact[3]), Number(compact[2]));
+    if (checkIn < ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()) && !compact[4]) {
+      year += 1;
+      checkIn = ymd(year, Number(compact[3]), Number(compact[1]));
+      checkOut = ymd(year, Number(compact[3]), Number(compact[2]));
+    }
+    if (!validateStayDates(checkIn, checkOut).error) return { checkIn, checkOut };
+  }
 
   const matches = Array.from(text.matchAll(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/g));
   if (matches.length < 2) return null;

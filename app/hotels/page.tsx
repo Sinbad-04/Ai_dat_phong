@@ -72,6 +72,12 @@ export default function HotelsPage() {
         setArea(requestedArea);
       }
     }
+    const requestedCheckin = params.get("checkin");
+    const requestedCheckout = params.get("checkout");
+    const requestedAdults = Number(params.get("adults"));
+    if (requestedCheckin) setCheckin(requestedCheckin);
+    if (requestedCheckout) setCheckout(requestedCheckout);
+    if (Number.isInteger(requestedAdults) && requestedAdults >= 1 && requestedAdults <= 9) setAdults(requestedAdults);
   }, []);
 
   const selectedDestination = useMemo(() => findDestination(dest), [dest]);

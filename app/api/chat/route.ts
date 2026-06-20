@@ -9,18 +9,21 @@ import {
   areasForDestination,
   detectDestination,
   detectDestinationArea,
+  guideForArea,
   hotelMatchesArea,
 } from "@/lib/data/destinations";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
 import {
   declinesAreaPreference,
   declinesBudgetFilter,
+  asksAboutDestinationHighlights,
   asksForRoomRecommendation,
   hasExplicitTripPurpose,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
   parseStayDates,
+  wantsDifferentArea,
 } from "@/lib/travel-query";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { createOfferToken } from "@/lib/offer-token";
@@ -64,24 +67,51 @@ export async function POST(req: Request) {
 
   // KHÁCH SẠN THẬT: thu thập đủ thông tin cơ bản trước khi gọi LiteAPI.
   const userMessages = messages.filter((message) => message.role === "user").map((message) => message.content);
-  const latestValue = <T,>(parser: (value: string) => T | null | undefined): T | null => {
-    for (const value of [...userMessages].reverse()) {
-      const parsedValue = parser(value);
-      if (parsedValue !== null && parsedValue !== undefined) return parsedValue;
+  const latestEntry = <T,>(parser: (value: string) => T | null | undefined): { value: T; index: number } | null => {
+    for (let index = userMessages.length - 1; index >= 0; index -= 1) {
+      const parsedValue = parser(userMessages[index]);
+      if (parsedValue !== null && parsedValue !== undefined) return { value: parsedValue, index };
     }
     return null;
   };
-  const dest = detectDestination(lastUser) || latestValue(detectDestination) || undefined;
-  const detectedArea = latestValue(detectDestinationArea);
-  const area = dest && detectedArea?.cityName === dest.cityName && detectedArea.countryCode === dest.countryCode
-    ? detectedArea
+  const latestValue = <T,>(parser: (value: string) => T | null | undefined): T | null => latestEntry(parser)?.value ?? null;
+  const latestIndex = (predicate: (value: string) => boolean): number => {
+    for (let index = userMessages.length - 1; index >= 0; index -= 1) {
+      if (predicate(userMessages[index])) return index;
+    }
+    return -1;
+  };
+  const destinationEntry = latestEntry(detectDestination);
+  const dest = destinationEntry?.value;
+  const areaEntry = latestEntry(detectDestinationArea);
+  const areaSkipIndex = latestIndex(declinesAreaPreference);
+  const area = dest
+    && areaEntry
+    && areaEntry.index >= (destinationEntry?.index ?? -1)
+    && areaEntry.index > areaSkipIndex
+    && areaEntry.value.cityName === dest.cityName
+    && areaEntry.value.countryCode === dest.countryCode
+    ? areaEntry.value
     : null;
   const availableAreas = dest ? areasForDestination(dest) : [];
-  const skippedArea = userMessages.some(declinesAreaPreference);
+  const skippedArea = areaSkipIndex >= (destinationEntry?.index ?? 0) && areaSkipIndex > (areaEntry?.index ?? -1);
   const parsedDates = latestValue(parseStayDates);
   const parsedGuests = latestValue(parseGuests);
-  const maxNightlyBudget = latestValue(parseMaxNightlyBudget);
-  const skippedBudget = userMessages.some(declinesBudgetFilter);
+  const budgetEntry = latestEntry(parseMaxNightlyBudget);
+  const budgetSkipIndex = latestIndex(declinesBudgetFilter);
+  const maxNightlyBudget = budgetEntry && budgetEntry.index > budgetSkipIndex ? budgetEntry.value : null;
+  const skippedBudget = budgetSkipIndex > (budgetEntry?.index ?? -1);
+
+  if (dest && wantsDifferentArea(lastUser) && availableAreas.length > 0) {
+    return NextResponse.json({
+      reply: `Được nhé, bạn muốn đổi sang khu vực nào khác tại **${dest.label}**?`,
+      mode: "clarify",
+      quickReplies: [
+        ...availableAreas.filter((item) => item.value !== area?.value).map((item) => item.label),
+        "Không ưu tiên khu vực",
+      ],
+    });
+  }
 
   if (dest && availableAreas.length > 0 && !area && !skippedArea) {
     return NextResponse.json({
@@ -93,6 +123,20 @@ export async function POST(req: Request) {
   }
 
   const locationLabel = area ? `${area.label}, ${dest?.label}` : dest?.label;
+
+  if (dest && area && asksAboutDestinationHighlights(lastUser)) {
+    const guide = guideForArea(area);
+    if (guide) {
+      return NextResponse.json({
+        reply:
+          `**Vì sao nên đến ${area.label}?**\n\n${area.label} đáng cân nhắc vì ${guide.reason}.\n\n` +
+          `**Điểm nổi bật:**\n${guide.highlights.map((item) => `- ${item}`).join("\n")}\n\n` +
+          `Khi bạn muốn tìm chỗ ở, hãy cho mình ngày nhận và trả phòng nhé.`,
+        mode: "destination-guide",
+        quickReplies: ["Chỗ khác đi"],
+      });
+    }
+  }
 
   if (dest && !parsedDates) {
     return NextResponse.json({
@@ -127,7 +171,12 @@ export async function POST(req: Request) {
     const checkOut = parsedDates!.checkOut;
     const nights = Math.max(1, Math.round((+new Date(checkOut) - +new Date(checkIn)) / 86_400_000));
     const guests = parsedGuests!;
-    const hotelsQuery = new URLSearchParams({ dest: `${dest.cityName}|${dest.countryCode}` });
+    const hotelsQuery = new URLSearchParams({
+      dest: `${dest.cityName}|${dest.countryCode}`,
+      checkin: checkIn,
+      checkout: checkOut,
+      adults: String(guests),
+    });
     if (area) hotelsQuery.set("area", area.value);
     const hotelsUrl = `/hotels?${hotelsQuery.toString()}`;
     try {

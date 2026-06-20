@@ -306,7 +306,11 @@ function inline(text: string, kp: string) {
   // Tách **đậm** và [chữ](link)
   return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).map((p, i) => {
     if (/^\*\*[^*]+\*\*$/.test(p)) {
-      return <strong key={kp + i} className="font-semibold text-ink">{p.slice(2, -2)}</strong>;
+      return (
+        <strong key={kp + i} className="font-semibold text-ink">
+          {inline(p.slice(2, -2), `${kp}${i}-strong-`)}
+        </strong>
+      );
     }
     const lm = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (lm) {

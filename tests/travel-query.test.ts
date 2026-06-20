@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   declinesAreaPreference,
   declinesBudgetFilter,
+  asksAboutDestinationHighlights,
   asksForRoomRecommendation,
   hasExplicitTripPurpose,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
   parseStayDates,
+  wantsDifferentArea,
 } from "../lib/travel-query";
 import { detectDestinationArea, hotelMatchesArea } from "../lib/data/destinations";
 
@@ -28,6 +30,11 @@ test("only recognizes explicit trip purposes and room requests", () => {
   assert.equal(hasExplicitTripPurpose("Bạn có thể làm gì?"), false);
   assert.equal(asksForRoomRecommendation("Gợi ý phòng phù hợp giúp tôi"), true);
   assert.equal(asksForRoomRecommendation("Gợi ý điểm đến"), false);
+});
+
+test("recognizes destination follow-up questions", () => {
+  assert.equal(asksAboutDestinationHighlights("Ở đây có gì đẹp?"), true);
+  assert.equal(wantsDifferentArea("Chỗ khác đi"), true);
 });
 
 test("detects and matches specific hotel areas", () => {
@@ -56,5 +63,13 @@ test("parses ISO and Vietnamese date ranges", () => {
   assert.deepEqual(parseStayDates("từ 10/07/2099 đến 12/07/2099"), {
     checkIn: "2099-07-10",
     checkOut: "2099-07-12",
+  });
+  assert.deepEqual(parseStayDates("10 - 12/7/2099"), {
+    checkIn: "2099-07-10",
+    checkOut: "2099-07-12",
+  });
+  assert.deepEqual(parseStayDates("10 - 12/7", new Date("2026-06-21T00:00:00Z")), {
+    checkIn: "2026-07-10",
+    checkOut: "2026-07-12",
   });
 });
