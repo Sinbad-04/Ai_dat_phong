@@ -10,7 +10,14 @@ export function bootstrap(): Promise<void> {
   if (!done) {
     done = (async () => {
       await ensureSchema();
-      const { email, password } = adminConfig();
+      let email: string;
+      let password: string;
+      try {
+        ({ email, password } = adminConfig());
+      } catch (error) {
+        console.warn("[bootstrap] Skipping admin seed:", error instanceof Error ? error.message : error);
+        return;
+      }
       const existing = await getUserByEmail(email);
       if (!existing) {
         await createUser({
