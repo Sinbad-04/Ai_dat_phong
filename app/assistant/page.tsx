@@ -16,6 +16,13 @@ type Msg = {
   suggestedRoomIds?: string[]; suggestedHotels?: Hotel[];
   quickReplies?: string[];
 };
+type Conversation = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: Msg[];
+};
 type Room = {
   id: string; name: string; type: string; capacity: number; basePrice: number; view: string; image: string;
 };
@@ -26,7 +33,9 @@ const STARTERS = [
   "Chính sách huỷ phòng và trẻ em thế nào?",
   "Có nhận thú cưng không?",
 ];
-const CHAT_STORAGE_KEY = "an-lanh-chat-history-v1";
+const LEGACY_CHAT_STORAGE_KEY = "an-lanh-chat-history-v1";
+const CONVERSATIONS_STORAGE_KEY = "an-lanh-chat-conversations-v1";
+const ACTIVE_CONVERSATION_KEY = "an-lanh-active-conversation-v1";
 const INITIAL_MESSAGES: Msg[] = [
   {
     role: "assistant",
@@ -34,11 +43,43 @@ const INITIAL_MESSAGES: Msg[] = [
   },
 ];
 
+function newConversation(messages: Msg[] = INITIAL_MESSAGES): Conversation {
+  const now = new Date().toISOString();
+  return {
+    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    title: "Cuộc trò chuyện mới",
+    createdAt: now,
+    updatedAt: now,
+    messages: messages.map((message) => ({ ...message })),
+  };
+}
+
+function conversationTitle(messages: Msg[]): string {
+  const firstQuestion = messages.find((message) => message.role === "user")?.content.trim();
+  if (!firstQuestion) return "Cuộc trò chuyện mới";
+  return firstQuestion.length > 38 ? `${firstQuestion.slice(0, 38).trim()}…` : firstQuestion;
+}
+
+function validMessages(value: unknown): value is Msg[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= 50 && value.every(
+    (item) => item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string"
+  );
+}
+
+function validConversations(value: unknown): value is Conversation[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= 20 && value.every(
+    (item) => item && typeof item.id === "string" && typeof item.title === "string"
+      && typeof item.createdAt === "string" && typeof item.updatedAt === "string" && validMessages(item.messages)
+  );
+}
+
 function AssistantInner() {
   const params = useSearchParams();
   const initialQ = params.get("q") || "";
   const [rooms, setRooms] = useState<Record<string, Room>>({});
   const [messages, setMessages] = useState<Msg[]>(INITIAL_MESSAGES);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState("");
   const [historyReady, setHistoryReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,27 +99,55 @@ function AssistantInner() {
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const valid = Array.isArray(parsed) && parsed.length > 0 && parsed.length <= 50 && parsed.every(
-          (item) => item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string"
-        );
-        if (valid) {
-          setMessages(parsed);
-        }
+      const saved = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (validConversations(parsed)) {
+        const requestedActiveId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+        const active = parsed.find((item) => item.id === requestedActiveId) || parsed[0];
+        setConversations(parsed);
+        setActiveConversationId(active.id);
+        setMessages(active.messages);
+      } else {
+        const legacySaved = sessionStorage.getItem(LEGACY_CHAT_STORAGE_KEY);
+        const legacyMessages = legacySaved ? JSON.parse(legacySaved) : null;
+        const conversation = newConversation(validMessages(legacyMessages) ? legacyMessages : INITIAL_MESSAGES);
+        conversation.title = conversationTitle(conversation.messages);
+        setConversations([conversation]);
+        setActiveConversationId(conversation.id);
+        setMessages(conversation.messages);
       }
     } catch {
-      sessionStorage.removeItem(CHAT_STORAGE_KEY);
+      const conversation = newConversation();
+      setConversations([conversation]);
+      setActiveConversationId(conversation.id);
+      setMessages(conversation.messages);
     } finally {
       setHistoryReady(true);
     }
   }, []);
 
   useEffect(() => {
-    if (!historyReady) return;
-    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-50)));
-  }, [messages, historyReady]);
+    if (!historyReady || !activeConversationId) return;
+    setConversations((current) => current.map((conversation) => conversation.id === activeConversationId
+      ? {
+          ...conversation,
+          title: conversationTitle(messages),
+          updatedAt: new Date().toISOString(),
+          messages: messages.slice(-50),
+        }
+      : conversation
+    ).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 20));
+  }, [messages, activeConversationId, historyReady]);
+
+  useEffect(() => {
+    if (!historyReady || conversations.length === 0) return;
+    try {
+      localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations));
+      localStorage.setItem(ACTIVE_CONVERSATION_KEY, activeConversationId);
+    } catch (error) {
+      console.warn("Không thể lưu lịch sử trò chuyện:", error);
+    }
+  }, [conversations, activeConversationId, historyReady]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -133,8 +202,26 @@ function AssistantInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQ, historyReady]);
 
+  function createNewConversation() {
+    if (loading) return;
+    const conversation = newConversation();
+    setConversations((current) => [conversation, ...current].slice(0, 20));
+    setActiveConversationId(conversation.id);
+    setMessages(conversation.messages);
+    setInput("");
+    setMode("");
+  }
+
+  function openConversation(conversation: Conversation) {
+    if (loading || conversation.id === activeConversationId) return;
+    setActiveConversationId(conversation.id);
+    setMessages(conversation.messages);
+    setInput("");
+    setMode("");
+  }
+
   return (
-    <div className="container-px py-8 max-w-3xl">
+    <div className="container-px py-8 max-w-6xl">
       <div className="flex items-center justify-between mb-4">
         <div>
           <span className="eyebrow">Concierge AI</span>
@@ -147,7 +234,41 @@ function AssistantInner() {
         )}
       </div>
 
-      <div className="card flex flex-col h-[64vh] min-h-[440px]">
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="card p-3 lg:h-[64vh] lg:min-h-[440px]">
+          <button
+            type="button"
+            onClick={createNewConversation}
+            disabled={loading}
+            className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <span className="text-lg leading-none">＋</span>
+            Cuộc trò chuyện mới
+          </button>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:block lg:max-h-[calc(64vh-76px)] lg:space-y-1 lg:overflow-y-auto lg:pb-0">
+            {conversations.map((conversation) => {
+              const active = conversation.id === activeConversationId;
+              return (
+                <button
+                  type="button"
+                  key={conversation.id}
+                  onClick={() => openConversation(conversation)}
+                  disabled={loading}
+                  className={`min-w-[190px] rounded-xl px-3 py-2.5 text-left transition lg:block lg:w-full lg:min-w-0 ${
+                    active ? "bg-teal/10 text-teal" : "text-ink/65 hover:bg-teal/5 hover:text-ink"
+                  } disabled:opacity-50`}
+                >
+                  <span className="block truncate text-sm font-medium">{conversation.title}</span>
+                  <span className="mt-0.5 block text-[10px] text-ink/40">
+                    {new Date(conversation.updatedAt).toLocaleDateString("vi-VN")}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+      <div className="card flex flex-col h-[64vh] min-h-[440px] min-w-0">
         <div className="chat-scroll flex-1 overflow-y-auto p-5 space-y-4">
           {messages.map((m, i) => (
             <div key={i}>
@@ -292,8 +413,9 @@ function AssistantInner() {
           </button>
         </div>
       </div>
+      </div>
 
-      <p className="text-xs text-ink/45 mt-3">
+      <p className="text-xs text-ink/45 mt-3 lg:ml-[276px]">
         Lưu ý: trợ lý không xử lý thông tin thẻ. Khi thanh toán, bạn tự nhập trên cổng an toàn của ngân hàng.
       </p>
     </div>
