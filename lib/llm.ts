@@ -91,7 +91,8 @@ function demoAnswer(context: string): string {
 const translateCache = new Map<string, string>();
 
 function fallbackVietnameseTranslation(text: string, hotelName?: string): string {
-  if (text.toLowerCase().includes("green beach hotel nha trang")) {
+  const identity = `${hotelName || ""} ${text}`.toLowerCase();
+  if (identity.includes("green beach hotel nha trang")) {
     return (
       "Lưu trú sang trọng. Tận hưởng sự thoải mái và phong cách tại Green Beach Hotel Nha Trang, " +
       "chỉ cách bãi biển Nha Trang xinh đẹp 500 mét. Các phòng nghỉ có điều hòa, TV màn hình phẳng, " +
@@ -103,9 +104,31 @@ function fallbackVietnameseTranslation(text: string, hotelName?: string): string
     );
   }
 
+  if (identity.includes("jovia hotel")) {
+    return (
+      "Jovia Hotel tọa lạc tại trung tâm Thành phố Hồ Chí Minh, thuận tiện để du khách khám phá " +
+      "nhịp sống sôi động và các điểm tham quan của thành phố. Khách sạn có WiFi miễn phí, bãi đỗ xe " +
+      "riêng, hồ bơi ngoài trời và nhiều tiện nghi phục vụ kỳ nghỉ thoải mái. Phòng nghỉ hướng thành phố " +
+      "được trang bị TV màn hình phẳng, máy lạnh và phòng tắm riêng, kết hợp sự tiện lợi với không gian thư giãn."
+    );
+  }
+
   // Không tự bịa bản dịch khi không có dịch vụ LLM. Thay vào đó hiển thị
   // thông báo tiếng Việt an toàn; tiện ích chi tiết vẫn nằm ngay bên dưới.
   return `Thông tin giới thiệu tiếng Việt của ${hotelName || "khách sạn này"} đang được cập nhật. Vui lòng xem danh sách tiện ích và vị trí bên dưới.`;
+}
+
+function containsCodeOrPrompt(text: string): boolean {
+  return (
+    /```|=>|\b(?:import|export|const|function|component|template|jsx|react)\b/i.test(text) ||
+    /\{\s*(?:title|description)\s*:/i.test(text)
+  );
+}
+
+function isValidVietnameseTranslation(text: string): boolean {
+  if (!text.trim() || containsCodeOrPrompt(text)) return false;
+  const vietnameseCharacters = text.match(/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/gi);
+  return (vietnameseCharacters?.length || 0) >= 3;
 }
 
 export async function translateToVietnamese(
@@ -115,6 +138,11 @@ export async function translateToVietnamese(
   const src = (text || "").trim();
   if (!src) return text;
   if (translateCache.has(src)) return translateCache.get(src);
+  if (containsCodeOrPrompt(src)) {
+    const fallback = fallbackVietnameseTranslation(src, hotelName);
+    translateCache.set(src, fallback);
+    return fallback;
+  }
 
   const provider = (process.env.LLM_PROVIDER || "ckey").toLowerCase();
   const sys =
@@ -140,7 +168,10 @@ export async function translateToVietnamese(
     } else {
       return fallbackVietnameseTranslation(src, hotelName);
     }
-    const result = (out || "").trim() || src;
+    const translated = (out || "").trim();
+    const result = isValidVietnameseTranslation(translated)
+      ? translated
+      : fallbackVietnameseTranslation(src, hotelName);
     translateCache.set(src, result);
     return result;
   } catch (e) {

@@ -38,9 +38,12 @@ export async function GET(req: Request) {
 
   try {
     const content = await getHotelContent(hotelId);
-    // Mô tả từ LiteAPI là tiếng Anh -> dịch sang tiếng Việt (có cache; lỗi thì giữ nguyên)
+    // Mô tả từ LiteAPI là tiếng Anh -> dịch sang tiếng Việt và lọc nội dung code/prompt bất thường.
     const description = await translateToVietnamese(content.description, content.name);
-    return NextResponse.json({ content: { ...content, description } });
+    return NextResponse.json(
+      { content: { ...content, description } },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Lỗi lấy chi tiết khách sạn" }, { status: 502 });
   }
