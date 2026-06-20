@@ -14,31 +14,32 @@ const schema = z.object({
 });
 
 export async function POST(req: Request) {
-  const rate = checkRateLimit(req, { namespace: "register", limit: 5, windowMs: 15 * 60_000 });
-  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
-  await bootstrap();
-  const body = await req.json().catch(() => ({}));
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-  }
-  const { name, email, password } = parsed.data;
-  if (await getUserByEmail(email)) {
-    return NextResponse.json({ error: "Email đã được đăng ký" }, { status: 409 });
-  }
-  let user;
   try {
-    user = await createUser({
+    const rate = checkRateLimit(req, { namespace: "register", limit: 5, windowMs: 15 * 60_000 });
+    if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
+    await bootstrap();
+    const body = await req.json().catch(() => ({}));
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { name, email, password } = parsed.data;
+    if (await getUserByEmail(email)) {
+      return NextResponse.json({ error: "Email đã được đăng ký" }, { status: 409 });
+    }
+    const user = await createUser({
       name,
       email,
       password_hash: await hashPassword(password),
       role: "user",
     });
-  } catch {
-    return NextResponse.json({ error: "Email đã được đăng ký" }, { status: 409 });
+    await createSession(user);
+    return NextResponse.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    });
+  } catch (error) {
+    console.error("[auth/register]", error);
+    const message = error instanceof Error ? error.message : "Đăng ký thất bại";
+    return NextResponse.json({ error: message || "Đăng ký thất bại" }, { status: 500 });
   }
-  await createSession(user);
-  return NextResponse.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  });
 }

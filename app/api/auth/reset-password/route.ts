@@ -14,14 +14,19 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const rate = checkRateLimit(request, { namespace: "reset-password", limit: 10, windowMs: 60 * 60_000 });
-  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
-  await bootstrap();
-  const parsed = schema.safeParse(await request.json().catch(() => ({})));
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-  const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
-  const updated = await consumePasswordResetToken(tokenHash, await hashPassword(parsed.data.password));
-  if (!updated) return NextResponse.json({ error: "Liên kết không hợp lệ hoặc đã hết hạn" }, { status: 400 });
-  return NextResponse.json({ ok: true });
+  try {
+    const rate = checkRateLimit(request, { namespace: "reset-password", limit: 10, windowMs: 60 * 60_000 });
+    if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
+    await bootstrap();
+    const parsed = schema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+    const updated = await consumePasswordResetToken(tokenHash, await hashPassword(parsed.data.password));
+    if (!updated) return NextResponse.json({ error: "Liên kết không hợp lệ hoặc đã hết hạn" }, { status: 400 });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("[auth/reset-password]", error);
+    const message = error instanceof Error ? error.message : "Đặt lại mật khẩu thất bại";
+    return NextResponse.json({ error: message || "Đặt lại mật khẩu thất bại" }, { status: 500 });
+  }
 }
-

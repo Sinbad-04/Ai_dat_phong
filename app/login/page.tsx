@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { readResponseBody } from "@/lib/http";
 
 function LoginInner() {
   const router = useRouter();
@@ -23,8 +24,12 @@ function LoginInner() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Đăng nhập thất bại");
+      const { data, text } = await readResponseBody(res);
+      const errorMessage =
+        typeof data === "object" && data && "error" in data
+          ? String((data as Record<string, unknown>).error || "Đăng nhập thất bại")
+          : text || "Đăng nhập thất bại";
+      if (!res.ok) throw new Error(errorMessage);
       router.push(next);
       router.refresh();
     } catch (e: any) {

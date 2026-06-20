@@ -13,21 +13,27 @@ const schema = z.object({
 });
 
 export async function POST(req: Request) {
-  const rate = checkRateLimit(req, { namespace: "login", limit: 10, windowMs: 15 * 60_000 });
-  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
-  await bootstrap();
-  const body = await req.json().catch(() => ({}));
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+  try {
+    const rate = checkRateLimit(req, { namespace: "login", limit: 10, windowMs: 15 * 60_000 });
+    if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
+    await bootstrap();
+    const body = await req.json().catch(() => ({}));
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { email, password } = parsed.data;
+    const user = await getUserByEmail(email);
+    if (!user || !(await verifyPassword(password, user.password_hash))) {
+      return NextResponse.json({ error: "Email hoặc mật khẩu không đúng" }, { status: 401 });
+    }
+    await createSession(user);
+    return NextResponse.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    });
+  } catch (error) {
+    console.error("[auth/login]", error);
+    const message = error instanceof Error ? error.message : "Đăng nhập thất bại";
+    return NextResponse.json({ error: message || "Đăng nhập thất bại" }, { status: 500 });
   }
-  const { email, password } = parsed.data;
-  const user = await getUserByEmail(email);
-  if (!user || !(await verifyPassword(password, user.password_hash))) {
-    return NextResponse.json({ error: "Email hoặc mật khẩu không đúng" }, { status: 401 });
-  }
-  await createSession(user);
-  return NextResponse.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  });
 }

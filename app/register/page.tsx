@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { readResponseBody } from "@/lib/http";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,8 +22,12 @@ export default function RegisterPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Đăng ký thất bại");
+      const { data, text } = await readResponseBody(res);
+      const errorMessage =
+        typeof data === "object" && data && "error" in data
+          ? String((data as Record<string, unknown>).error || "Đăng ký thất bại")
+          : text || "Đăng ký thất bại";
+      if (!res.ok) throw new Error(errorMessage);
       router.push("/assistant");
       router.refresh();
     } catch (e: any) {
