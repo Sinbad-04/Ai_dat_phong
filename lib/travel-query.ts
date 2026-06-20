@@ -28,6 +28,7 @@ export function asksAboutDestinationHighlights(text: string): boolean {
   return [
     "o day co gi",
     "co gi dep",
+    "co gi hay",
     "co gi choi",
     "di dau choi",
     "tai sao nen den",

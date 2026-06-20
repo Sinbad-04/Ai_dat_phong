@@ -10,6 +10,7 @@ export type DestinationArea = {
   keywords: string[];
 };
 export type AreaGuide = { reason: string; highlights: string[] };
+export type DestinationGuide = AreaGuide;
 
 export const DESTINATIONS: Destination[] = [
   // Việt Nam
@@ -73,6 +74,24 @@ const AREA_GUIDES: Record<string, AreaGuide> = {
 
 export function guideForArea(area: DestinationArea): AreaGuide | undefined {
   return AREA_GUIDES[area.value];
+}
+
+const DESTINATION_GUIDES: Record<string, DestinationGuide> = {
+  "Nha Trang|VN": { reason: "có biển đẹp, nhiều hoạt động đảo và dịch vụ du lịch thuận tiện", highlights: ["Vịnh Nha Trang và các tour đảo", "Tháp Bà Ponagar", "Bãi biển Trần Phú và ẩm thực hải sản"] },
+  "Da Nang|VN": { reason: "dễ kết hợp nghỉ biển, khám phá thành phố và tham quan di sản lân cận", highlights: ["Biển Mỹ Khê", "Bán đảo Sơn Trà và chùa Linh Ứng", "Cầu Rồng và ẩm thực địa phương"] },
+  "Ho Chi Minh City|VN": { reason: "nhịp sống sôi động, ẩm thực đa dạng và nhiều công trình lịch sử", highlights: ["Dinh Độc Lập và Nhà thờ Đức Bà", "Phố đi bộ Nguyễn Huệ", "Chợ Bến Thành và trải nghiệm ẩm thực"] },
+  "Hanoi|VN": { reason: "giàu văn hóa, kiến trúc và có nhiều trải nghiệm ẩm thực đặc trưng", highlights: ["Hồ Hoàn Kiếm và phố cổ", "Văn Miếu – Quốc Tử Giám", "Hồ Tây và các quán cà phê ven hồ"] },
+  "Phu Quoc|VN": { reason: "phù hợp nghỉ biển, ngắm hoàng hôn và khám phá thiên nhiên đảo", highlights: ["Bãi Sao và các bãi biển phía nam", "Tour đảo, lặn ngắm san hô và Hòn Thơm", "Chợ đêm Dương Đông và hoàng hôn Bãi Trường"] },
+  "Da Lat|VN": { reason: "khí hậu dễ chịu, cảnh quan rừng thông và nhiều không gian thư giãn", highlights: ["Hồ Xuân Hương và trung tâm Đà Lạt", "Hồ Tuyền Lâm", "Các vườn hoa, quán cà phê và cung đường ngoại ô"] },
+  "Singapore|SG": { reason: "giao thông thuận tiện, sạch đẹp và kết hợp tốt tham quan, mua sắm, ẩm thực", highlights: ["Marina Bay", "Gardens by the Bay", "Sentosa và các khu ẩm thực hawker"] },
+  "Bangkok|TH": { reason: "nổi bật với đền chùa, mua sắm và ẩm thực đường phố", highlights: ["Hoàng cung và Wat Pho", "Các khu chợ và trung tâm mua sắm", "Du thuyền hoặc dạo ven sông Chao Phraya"] },
+  "Paris|FR": { reason: "giàu nghệ thuật, kiến trúc và trải nghiệm ẩm thực", highlights: ["Tháp Eiffel và sông Seine", "Bảo tàng Louvre", "Montmartre và các khu phố cổ"] },
+  "London|GB": { reason: "kết hợp lịch sử, bảo tàng và đời sống đô thị đa dạng", highlights: ["Westminster và Big Ben", "British Museum", "Tower Bridge và các khu chợ"] },
+  "Tokyo|JP": { reason: "giao thoa giữa văn hóa truyền thống, công nghệ và ẩm thực", highlights: ["Asakusa và đền Sensō-ji", "Shibuya và Shinjuku", "Chợ, bảo tàng và các khu ẩm thực"] },
+};
+
+export function guideForDestination(destination: Destination): DestinationGuide | undefined {
+  return DESTINATION_GUIDES[`${destination.cityName}|${destination.countryCode}`];
 }
 
 export function findDestination(key: string): Destination | undefined {

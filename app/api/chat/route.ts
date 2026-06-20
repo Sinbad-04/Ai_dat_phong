@@ -10,6 +10,7 @@ import {
   detectDestination,
   detectDestinationArea,
   guideForArea,
+  guideForDestination,
   hotelMatchesArea,
 } from "@/lib/data/destinations";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
@@ -113,6 +114,25 @@ export async function POST(req: Request) {
     });
   }
 
+  if (dest && asksAboutDestinationHighlights(lastUser)) {
+    const guide = area ? guideForArea(area) : guideForDestination(dest);
+    const guideLabel = area ? `${area.label}, ${dest.label}` : dest.label;
+    if (guide) {
+      return NextResponse.json({
+        reply:
+          `**Vì sao nên đến ${guideLabel}?**\n\n${guideLabel} đáng cân nhắc vì ${guide.reason}.\n\n` +
+          `**Trải nghiệm nổi bật:**\n${guide.highlights.map((item) => `- ${item}`).join("\n")}\n\n` +
+          (area
+            ? "Khi bạn muốn tìm chỗ ở, hãy cho mình ngày nhận và trả phòng nhé."
+            : "Bạn chọn khu vực bên dưới để mình giới thiệu kỹ hơn và tìm khách sạn phù hợp nhé."),
+        mode: "destination-guide",
+        quickReplies: area
+          ? ["Chỗ khác đi"]
+          : [...availableAreas.map((item) => item.label), "Không ưu tiên khu vực"],
+      });
+    }
+  }
+
   if (dest && availableAreas.length > 0 && !area && !skippedArea) {
     return NextResponse.json({
       reply:
@@ -123,20 +143,6 @@ export async function POST(req: Request) {
   }
 
   const locationLabel = area ? `${area.label}, ${dest?.label}` : dest?.label;
-
-  if (dest && area && asksAboutDestinationHighlights(lastUser)) {
-    const guide = guideForArea(area);
-    if (guide) {
-      return NextResponse.json({
-        reply:
-          `**Vì sao nên đến ${area.label}?**\n\n${area.label} đáng cân nhắc vì ${guide.reason}.\n\n` +
-          `**Điểm nổi bật:**\n${guide.highlights.map((item) => `- ${item}`).join("\n")}\n\n` +
-          `Khi bạn muốn tìm chỗ ở, hãy cho mình ngày nhận và trả phòng nhé.`,
-        mode: "destination-guide",
-        quickReplies: ["Chỗ khác đi"],
-      });
-    }
-  }
 
   if (dest && !parsedDates) {
     return NextResponse.json({
@@ -220,6 +226,9 @@ export async function POST(req: Request) {
           currency: h.currency,
           rating: h.rating,
           starRating: h.starRating,
+          facilities: h.facilities,
+          boardName: h.boardName,
+          refundable: h.refundable,
           checkIn: h.checkin,
           checkOut: h.checkout,
           guests,

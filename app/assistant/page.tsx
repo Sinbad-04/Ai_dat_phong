@@ -8,6 +8,7 @@ import { vnd, money, fmtDate } from "@/lib/format";
 type Hotel = {
   hotelId: string; offerId: string; name: string; image?: string; address?: string; city?: string;
   rateName?: string; price: number; currency: string; rating?: number; starRating?: number;
+  facilities?: string[]; boardName?: string; refundable?: boolean;
   checkIn: string; checkOut: string; guests: number;
   offerToken?: string;
 };
@@ -309,9 +310,32 @@ function AssistantInner() {
                           <div className="h-28 w-full bg-gradient-to-br from-teal to-jade" />
                         )}
                         <div className="p-3">
-                          <div className="font-medium text-sm truncate">{h.name}</div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-medium text-sm truncate">{h.name}</div>
+                            {typeof h.starRating === "number" && h.starRating > 0 && (
+                              <span className="shrink-0 text-[10px] text-sunset">★ {h.starRating}</span>
+                            )}
+                          </div>
                           {h.address && (
                             <div className="text-xs text-ink/55 truncate">📍 {h.address}{h.city ? `, ${h.city}` : ""}</div>
+                          )}
+                          {h.rateName && (
+                            <div className="mt-1 truncate text-[11px] font-medium text-ink/70">🛏️ {h.rateName}</div>
+                          )}
+                          {(h.boardName || h.refundable) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {h.boardName && <span className="rounded-full bg-sunset/15 px-2 py-0.5 text-[10px] text-ink/65">🍽️ {h.boardName}</span>}
+                              {h.refundable && <span className="rounded-full bg-jade/10 px-2 py-0.5 text-[10px] text-jade">✓ Hoàn huỷ được</span>}
+                            </div>
+                          )}
+                          {h.facilities && h.facilities.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {h.facilities.slice(0, 4).map((facility) => (
+                                <span key={facility} className="rounded-full bg-teal/7 px-2 py-0.5 text-[10px] text-teal">
+                                  {facility}
+                                </span>
+                              ))}
+                            </div>
                           )}
                           <div className="text-[11px] text-ink/45 mt-0.5">
                             {fmtDate(h.checkIn)} → {fmtDate(h.checkOut)} · {h.guests} khách
