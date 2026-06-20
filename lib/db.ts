@@ -15,6 +15,14 @@ export type User = {
   created_at: string;
 };
 
+type PasswordResetToken = {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+};
+
 export type Booking = {
   id: string;
   user_id: string;
@@ -53,10 +61,10 @@ function db() {
 
 // ---- Bộ nhớ tạm (dev fallback) ----
 const g = globalThis as unknown as {
-  __mem?: { users: User[]; bookings: Booking[]; ready: boolean };
+  __mem?: { users: User[]; bookings: Booking[]; resetTokens: PasswordResetToken[]; ready: boolean };
 };
 function mem() {
-  if (!g.__mem) g.__mem = { users: [], bookings: [], ready: false };
+  if (!g.__mem) g.__mem = { users: [], bookings: [], resetTokens: [], ready: false };
   return g.__mem;
 }
 
@@ -107,6 +115,15 @@ export async function ensureSchema() {
       notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
+  await s`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT UNIQUE NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
   // Di trú nhẹ cho DB đã tạo từ trước (idempotent)
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'VND'`;
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'static'`;
@@ -114,6 +131,7 @@ export async function ensureSchema() {
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS transaction_id TEXT`;
   await s`ALTER TABLE bookings ALTER COLUMN room_id DROP NOT NULL`;
   await s`ALTER TABLE bookings ALTER COLUMN package_id DROP NOT NULL`;
+  await s`CREATE UNIQUE INDEX IF NOT EXISTS bookings_transaction_id_unique ON bookings(transaction_id) WHERE transaction_id IS NOT NULL`;
 }
 
 // ---- Users ----
@@ -162,6 +180,68 @@ export async function listUsers(): Promise<User[]> {
   return db()<User[]>`SELECT * FROM users ORDER BY created_at DESC`;
 }
 
+export async function updateUserRole(id: string, role: Role): Promise<boolean> {
+  if (!HAS_DB) {
+    const user = mem().users.find((item) => item.id === id);
+    if (!user) return false;
+    user.role = role;
+    return true;
+  }
+  const rows = await db()<User[]>`UPDATE users SET role = ${role} WHERE id = ${id} RETURNING *`;
+  return rows.length > 0;
+}
+
+export async function createPasswordResetToken(
+  email: string,
+  tokenHash: string,
+  expiresAt: string
+): Promise<User | null> {
+  const user = await getUserByEmail(email);
+  if (!user) return null;
+  if (!HAS_DB) {
+    mem().resetTokens = mem().resetTokens.filter(
+      (token) => token.user_id !== user.id && token.expires_at > new Date().toISOString()
+    );
+    mem().resetTokens.push({
+      id: uid(), user_id: user.id, token_hash: tokenHash, expires_at: expiresAt, used_at: null,
+    });
+    return user;
+  }
+  await db()`DELETE FROM password_reset_tokens WHERE user_id = ${user.id} OR expires_at < now()`;
+  await db()`
+    INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+    VALUES (${uid()}, ${user.id}, ${tokenHash}, ${expiresAt})`;
+  return user;
+}
+
+export async function consumePasswordResetToken(
+  tokenHash: string,
+  passwordHash: string
+): Promise<boolean> {
+  if (!HAS_DB) {
+    const token = mem().resetTokens.find(
+      (item) => item.token_hash === tokenHash && !item.used_at && item.expires_at > new Date().toISOString()
+    );
+    if (!token) return false;
+    const user = mem().users.find((item) => item.id === token.user_id);
+    if (!user) return false;
+    user.password_hash = passwordHash;
+    token.used_at = new Date().toISOString();
+    return true;
+  }
+  return db().begin(async (tx) => {
+    const rows = await tx<PasswordResetToken[]>`
+      SELECT * FROM password_reset_tokens
+      WHERE token_hash = ${tokenHash} AND used_at IS NULL AND expires_at > now()
+      FOR UPDATE LIMIT 1`;
+    const token = rows[0];
+    if (!token) return false;
+    await tx`UPDATE users SET password_hash = ${passwordHash} WHERE id = ${token.user_id}`;
+    await tx`UPDATE password_reset_tokens SET used_at = now() WHERE id = ${token.id}`;
+    return true;
+  });
+}
+
 // ---- Bookings ----
 export async function createBooking(b: Omit<Booking, "id" | "created_at">): Promise<Booking> {
   const booking: Booking = { ...b, id: uid(), created_at: new Date().toISOString() };
@@ -179,6 +259,62 @@ export async function createBooking(b: Omit<Booking, "id" | "created_at">): Prom
        ${booking.source}, ${booking.provider_ref}, ${booking.transaction_id},
        ${booking.status}, ${booking.notes})`;
   return booking;
+}
+
+export async function countOverlappingBookings(
+  roomId: string,
+  checkIn: string,
+  checkOut: string
+): Promise<number> {
+  if (!HAS_DB) {
+    return mem().bookings.filter(
+      (booking) =>
+        booking.room_id === roomId &&
+        booking.status !== "cancelled" &&
+        booking.check_in < checkOut &&
+        booking.check_out > checkIn
+    ).length;
+  }
+  const rows = await db()<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count FROM bookings
+    WHERE room_id = ${roomId}
+      AND status <> 'cancelled'
+      AND check_in < ${checkOut}::date
+      AND check_out > ${checkIn}::date`;
+  return rows[0]?.count ?? 0;
+}
+
+export async function createStaticBookingIfAvailable(
+  input: Omit<Booking, "id" | "created_at">,
+  inventory: number
+): Promise<Booking | null> {
+  if (!HAS_DB) {
+    const occupied = await countOverlappingBookings(input.room_id, input.check_in, input.check_out);
+    return occupied >= inventory ? null : createBooking(input);
+  }
+
+  return db().begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${input.room_id}))`;
+    const rows = await tx<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM bookings
+      WHERE room_id = ${input.room_id}
+        AND status <> 'cancelled'
+        AND check_in < ${input.check_out}::date
+        AND check_out > ${input.check_in}::date`;
+    if ((rows[0]?.count ?? 0) >= inventory) return null;
+
+    const booking: Booking = { ...input, id: uid(), created_at: new Date().toISOString() };
+    await tx`
+      INSERT INTO bookings
+        (id, user_id, room_id, room_name, check_in, check_out, guests, package_id, nights, total_price, deposit, currency, source, provider_ref, transaction_id, status, notes)
+      VALUES
+        (${booking.id}, ${booking.user_id}, ${booking.room_id}, ${booking.room_name},
+         ${booking.check_in}, ${booking.check_out}, ${booking.guests}, ${booking.package_id},
+         ${booking.nights}, ${booking.total_price}, ${booking.deposit}, ${booking.currency},
+         ${booking.source}, ${booking.provider_ref}, ${booking.transaction_id},
+         ${booking.status}, ${booking.notes})`;
+    return booking;
+  });
 }
 
 export async function listBookingsByUser(userId: string): Promise<Booking[]> {
@@ -208,13 +344,35 @@ export async function listAllBookings(): Promise<(Booking & { user_email: string
 export async function setBookingStatus(
   id: string,
   status: Booking["status"]
-): Promise<void> {
+): Promise<boolean> {
   if (!HAS_DB) {
     const bk = mem().bookings.find((x) => x.id === id);
-    if (bk) bk.status = status;
-    return;
+    if (!bk) return false;
+    bk.status = status;
+    return true;
   }
-  await db()`UPDATE bookings SET status = ${status} WHERE id = ${id}`;
+  const rows = await db()<Booking[]>`UPDATE bookings SET status = ${status} WHERE id = ${id} RETURNING *`;
+  return rows.length > 0;
+}
+
+export async function getBookingById(id: string): Promise<Booking | null> {
+  if (!HAS_DB) return mem().bookings.find((booking) => booking.id === id) ?? null;
+  const rows = await db()<Booking[]>`SELECT * FROM bookings WHERE id = ${id} LIMIT 1`;
+  return rows[0] ?? null;
+}
+
+export async function cancelBookingByUser(id: string, userId: string): Promise<Booking | null> {
+  if (!HAS_DB) {
+    const booking = mem().bookings.find((item) => item.id === id && item.user_id === userId);
+    if (!booking || !["pending", "payment_pending"].includes(booking.status)) return null;
+    booking.status = "cancelled";
+    return booking;
+  }
+  const rows = await db()<Booking[]>`
+    UPDATE bookings SET status = 'cancelled'
+    WHERE id = ${id} AND user_id = ${userId} AND status IN ('pending', 'payment_pending')
+    RETURNING *`;
+  return rows[0] ?? null;
 }
 
 // Tìm đơn theo transactionId (dùng khi xác nhận sau thanh toán LiteAPI)

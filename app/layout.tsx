@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "An Lành Bay — Trợ lý đặt phòng AI",
@@ -25,7 +26,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="mt-16 border-t border-teal/10 py-8">
           <div className="container-px flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-ink/60">
             <span>© {new Date().getFullYear()} An Lành Bay Resort & Spa — Bãi Dài, Cam Ranh.</span>
-            <span className="font-mono text-xs">AI20K-194 · RAG + LLM</span>
+            <div className="flex items-center gap-4 text-xs">
+              <Link href="/privacy" className="hover:text-teal">Quyền riêng tư</Link>
+              <Link href="/terms" className="hover:text-teal">Điều khoản</Link>
+              <span className="font-mono">AI20K-194 · RAG + LLM</span>
+            </div>
           </div>
         </footer>
       </body>

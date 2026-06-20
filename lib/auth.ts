@@ -3,10 +3,10 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { getUserById, type User } from "./db";
+import { jwtSecret } from "./env";
 
 const COOKIE = "resort_session";
-const secret = () =>
-  new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret-doi-trong-production");
+const secret = () => new TextEncoder().encode(jwtSecret());
 
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 10);

@@ -7,29 +7,12 @@ import { generate, type ChatMsg } from "@/lib/llm";
 import { ROOMS } from "@/lib/data/knowledge";
 import { detectDestination } from "@/lib/data/destinations";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
+import { parseGuests, parseMaxNightlyBudget, parseStayDates } from "@/lib/travel-query";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { createOfferToken } from "@/lib/offer-token";
 
 function ymd(daysFromNow: number): string {
   return new Date(Date.now() + daysFromNow * 86400000).toISOString().slice(0, 10);
-}
-
-function parseMaxNightlyBudget(text: string): number | null {
-  const normalized = text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d");
-  const match = normalized.match(
-    /(?:<=|<|duoi|toi da|khong qua|nho hon)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k|vnd|d)?\b/i
-  );
-  if (!match) return null;
-
-  const value = Number(match[1].replace(",", "."));
-  if (!Number.isFinite(value) || value <= 0) return null;
-  const unit = match[2] || "";
-  if (unit === "trieu" || unit === "tr") return Math.round(value * 1_000_000);
-  if (["nghin", "ngan", "k"].includes(unit)) return Math.round(value * 1_000);
-  if (unit === "vnd" || unit === "d" || value >= 10_000) return Math.round(value);
-  return null;
 }
 
 function formatVnd(value: number): string {
@@ -41,11 +24,14 @@ export const maxDuration = 30;
 
 const schema = z.object({
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
-    .min(1),
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(4_000) }))
+    .min(1)
+    .max(30),
 });
 
 export async function POST(req: Request) {
+  const rate = checkRateLimit(req, { namespace: "chat", limit: 30, windowMs: 10 * 60_000 });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   await bootstrap();
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
@@ -61,12 +47,22 @@ export async function POST(req: Request) {
 
   // KHÁCH SẠN THẬT: nếu khách nhắc tới một thành phố (ngoài resort), tự gọi LiteAPI
   // và trả về danh sách khách sạn thật ngay trong khung chat (ngày mặc định +7/+9, 2 khách).
-  const dest = detectDestination(lastUser);
+  const userMessages = messages.filter((message) => message.role === "user").map((message) => message.content);
+  const latestValue = <T,>(parser: (value: string) => T | null | undefined): T | null => {
+    for (const value of [...userMessages].reverse()) {
+      const parsedValue = parser(value);
+      if (parsedValue !== null && parsedValue !== undefined) return parsedValue;
+    }
+    return null;
+  };
+  const dest = detectDestination(lastUser) || latestValue(detectDestination) || undefined;
   if (dest && isConfigured()) {
-    const checkIn = ymd(7);
-    const checkOut = ymd(9);
-    const nights = 2;
-    const maxNightlyBudget = parseMaxNightlyBudget(lastUser);
+    const parsedDates = latestValue(parseStayDates);
+    const checkIn = parsedDates?.checkIn || ymd(7);
+    const checkOut = parsedDates?.checkOut || ymd(9);
+    const nights = Math.max(1, Math.round((+new Date(checkOut) - +new Date(checkIn)) / 86_400_000));
+    const guests = latestValue(parseGuests) || 2;
+    const maxNightlyBudget = latestValue(parseMaxNightlyBudget);
     const hotelsUrl = `/hotels?dest=${encodeURIComponent(`${dest.cityName}|${dest.countryCode}`)}`;
     try {
       // Timeout tổng: dù LiteAPI chậm, chat vẫn phản hồi trong ~18s.
@@ -76,9 +72,9 @@ export async function POST(req: Request) {
           countryCode: dest.countryCode,
           checkin: checkIn,
           checkout: checkOut,
-          adults: 2,
-          limit: 10,
-          enrich: 4,
+          adults: guests,
+          limit: 30,
+          enrich: 10,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("LiteAPI timeout (chat)")), 18000)
@@ -88,7 +84,7 @@ export async function POST(req: Request) {
         ? hotels.filter((hotel) => hotel.price / nights <= maxNightlyBudget)
         : hotels;
       if (matchingHotels.length > 0) {
-        const suggestedHotels = matchingHotels.slice(0, 4).map((h) => ({
+        const suggestedHotels = await Promise.all(matchingHotels.slice(0, 4).map(async (h) => ({
           hotelId: h.hotelId,
           offerId: h.offerId,
           name: h.name,
@@ -102,14 +98,23 @@ export async function POST(req: Request) {
           starRating: h.starRating,
           checkIn: h.checkin,
           checkOut: h.checkout,
-          guests: 2,
-        }));
+          guests,
+          offerToken: await createOfferToken({
+            offerId: h.offerId,
+            hotelId: h.hotelId,
+            name: h.name,
+            roomDescription: h.rateName,
+            checkIn: h.checkin,
+            checkOut: h.checkout,
+            guests,
+          }),
+        })));
         const budgetText = maxNightlyBudget
           ? `, đúng mức dưới **${formatVnd(maxNightlyBudget)}/đêm**`
           : "";
         const reply =
           `Đây là vài khách sạn thật ở **${dest.label}** mình tìm được${budgetText} ` +
-          `(ngày mặc định ${checkIn} → ${checkOut}, 2 khách). ` +
+          `(${parsedDates ? "ngày yêu cầu" : "ngày mặc định"} ${checkIn} → ${checkOut}, ${guests} khách). ` +
           `Bấm **Chi tiết** để xem ảnh, mô tả & đặt; hoặc mở trang **Khách sạn** để đổi ngày/số khách. ` +
           `Mình vẫn có thể tư vấn thêm nếu bạn muốn so sánh hoặc cần ưu đãi nhé.`;
         return NextResponse.json({ reply, mode: "liteapi", suggestedHotels });

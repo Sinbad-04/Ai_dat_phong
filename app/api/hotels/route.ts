@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
 import { RESORT, ROOMS } from "@/lib/data/knowledge";
 import { findDestination } from "@/lib/data/destinations";
+import { validateStayDates } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { createOfferToken } from "@/lib/offer-token";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-function nights(a: string, b: string) {
-  return Math.max(1, Math.round((+new Date(b) - +new Date(a)) / 86400000));
-}
-
 // Fallback: coi An Lành Bay như một khách sạn với các hạng phòng tĩnh
 function fallbackHotels(checkin: string, checkout: string, adults: number) {
-  const n = nights(checkin, checkout);
+  const n = validateStayDates(checkin, checkout).nights;
   return ROOMS.filter((r) => r.capacity >= adults).map((r) => ({
     hotelId: `static-${r.id}`,
     name: `${RESORT.name} — ${r.name}`,
@@ -37,18 +36,21 @@ function fallbackHotels(checkin: string, checkout: string, adults: number) {
 }
 
 export async function GET(req: Request) {
+  const rate = checkRateLimit(req, { namespace: "hotel-search", limit: 60, windowMs: 60 * 60_000 });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   const { searchParams } = new URL(req.url);
   const dest = searchParams.get("dest") || "Nha Trang|VN";
   const checkin = searchParams.get("checkin") || "";
   const checkout = searchParams.get("checkout") || "";
-  const adults = Math.max(1, Math.min(9, Number(searchParams.get("adults") || 2)));
+  const rawAdults = Number(searchParams.get("adults") || 2);
+  const adults = Number.isInteger(rawAdults) ? rawAdults : 0;
 
   if (!checkin || !checkout) {
     return NextResponse.json({ error: "Thiếu ngày nhận/trả phòng" }, { status: 400 });
   }
-  if (nights(checkin, checkout) < 1) {
-    return NextResponse.json({ error: "Ngày trả phòng phải sau ngày nhận phòng" }, { status: 400 });
-  }
+  const stay = validateStayDates(checkin, checkout);
+  if (stay.error) return NextResponse.json({ error: stay.error }, { status: 400 });
+  if (adults < 1 || adults > 9) return NextResponse.json({ error: "Số khách phải từ 1 đến 9" }, { status: 400 });
 
   if (!isConfigured()) {
     return NextResponse.json({
@@ -69,18 +71,31 @@ export async function GET(req: Request) {
       checkout,
       adults,
     });
+    const signedHotels = await Promise.all(hotels.map(async (hotel) => ({
+      ...hotel,
+      offerToken: await createOfferToken({
+        offerId: hotel.offerId,
+        hotelId: hotel.hotelId,
+        name: hotel.name,
+        roomDescription: hotel.rateName,
+        checkIn: hotel.checkin,
+        checkOut: hotel.checkout,
+        guests: adults,
+      }),
+    })));
     return NextResponse.json({
       source: "liteapi",
       note:
         hotels.length === 0
           ? "Không tìm thấy phòng trống cho lựa chọn này. Thử đổi ngày hoặc điểm đến (Singapore/Bangkok/Paris nhiều dữ liệu sandbox hơn)."
           : undefined,
-      hotels,
+      hotels: signedHotels,
     });
-  } catch (e: any) {
+  } catch (error) {
+    console.error("LiteAPI hotel search failed:", error);
     return NextResponse.json({
       source: "fallback",
-      note: "Gọi LiteAPI lỗi nên tạm dùng dữ liệu mẫu. Chi tiết: " + (e?.message || "unknown"),
+      note: "Dịch vụ khách sạn đang gián đoạn nên tạm dùng dữ liệu mẫu.",
       hotels: fallbackHotels(checkin, checkout, adults),
     });
   }

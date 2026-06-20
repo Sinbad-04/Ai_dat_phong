@@ -3,21 +3,12 @@
 
 export type CompareRow = {
   platform: string;
-  price: number;
+  price: number | null;
   currency: string;
   url: string;
   estimated: boolean;
   ours?: boolean;
 };
-
-function seed(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash);
-}
 
 export function buildComparison(input: {
   hotelName: string;
@@ -39,14 +30,6 @@ export function buildComparison(input: {
     "Google Hotels": `https://www.google.com/travel/search?q=${query}`,
   };
 
-  const hash = seed(input.hotelName || "hotel");
-  const offsets: Record<string, number> = {
-    "Booking.com": 1 + ((hash % 6) + 2) / 100,
-    Agoda: 1 + (((hash >> 3) % 6) + 1) / 100,
-    Traveloka: 1 + (((hash >> 6) % 7) + 3) / 100,
-    "Google Hotels": 1 + (((hash >> 9) % 5) + 2) / 100,
-  };
-
   return [
     {
       platform: "Chúng tôi (LiteAPI)",
@@ -58,10 +41,10 @@ export function buildComparison(input: {
     },
     ...Object.keys(urls).map((platform) => ({
       platform,
-      price: Math.round((input.ourPrice * offsets[platform]) / 1000) * 1000,
+      price: null,
       currency: input.currency,
       url: urls[platform],
-      estimated: true,
+      estimated: false,
     })),
   ];
 }

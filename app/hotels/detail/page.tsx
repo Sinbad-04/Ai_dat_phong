@@ -56,6 +56,7 @@ function DetailInner() {
     guests: Number(sp.get("guests") || 2),
     price: Number(sp.get("price") || 0),
     currency: sp.get("currency") || "VND",
+    offerToken: sp.get("offerToken") || "",
   };
 
   const [content, setContent] = useState<Content | null>(null);
@@ -117,6 +118,7 @@ function DetailInner() {
       checkIn: offer.checkIn, checkOut: offer.checkOut, guests: String(offer.guests),
       price: String(offer.price), currency: offer.currency,
     });
+    if (offer.offerToken) qs.set("offerToken", offer.offerToken);
     if (content?.image) qs.set("image", content.image);
     if (content?.address) qs.set("address", content.address);
     router.push(`/checkout?${qs.toString()}`);
@@ -148,7 +150,8 @@ function DetailInner() {
         currency: offer.currency,
       })
     : [];
-  const minPrice = compareRows.length ? Math.min(...compareRows.map((row) => row.price)) : 0;
+  const knownPrices = compareRows.flatMap((row) => row.price === null ? [] : [row.price]);
+  const minPrice = knownPrices.length ? Math.min(...knownPrices) : 0;
 
   return (
     <div className="container-px py-8">
@@ -236,7 +239,7 @@ function DetailInner() {
               <h2 className="font-display text-xl text-teal">So sánh giá các nền tảng</h2>
               <div className="mt-3 overflow-hidden rounded-2xl border border-teal/12">
                 {compareRows.map((row) => {
-                  const cheapest = row.price === minPrice;
+                  const cheapest = row.price !== null && row.price === minPrice;
                   return (
                     <div
                       key={row.platform}
@@ -260,7 +263,9 @@ function DetailInner() {
                         )}
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm text-teal">{money(row.price, row.currency)}</span>
+                        <span className="font-mono text-sm text-teal">
+                          {row.price === null ? "Xem giá thực tế" : money(row.price, row.currency)}
+                        </span>
                         {row.ours ? (
                           <button className="btn-primary px-3 py-1.5 text-xs" onClick={book} disabled={busy}>
                             {busy ? "…" : "Đặt ngay"}
@@ -281,8 +286,8 @@ function DetailInner() {
                 })}
               </div>
               <p className="mt-2 text-xs text-ink/50">
-                Giá tại web là giá thật, đặt được ngay. Giá các nền tảng khác là <b>ước tính minh hoạ</b>;
-                bấm “Kiểm tra” để mở trang tìm kiếm thật và đối chiếu.
+                Giá tại web là giá thật, đặt được ngay. Bấm “Kiểm tra” để mở trang tìm kiếm của từng
+                nền tảng và xem giá thực tế; hệ thống không tạo giá ước tính.
               </p>
             </section>
           )}

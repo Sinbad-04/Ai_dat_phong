@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DESTINATIONS } from "@/lib/data/destinations";
 import { videoFor } from "@/lib/data/hotel-videos";
@@ -20,6 +20,7 @@ type LiveHotel = {
   reviewCount?: number;
   facilities?: string[];
   offerId: string;
+  offerToken?: string;
   rateName: string;
   boardName?: string;
   refundable?: boolean;
@@ -54,6 +55,28 @@ export default function HotelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [maxNightly, setMaxNightly] = useState("");
+  const [minStars, setMinStars] = useState(0);
+  const [minRating, setMinRating] = useState(0);
+  const [facility, setFacility] = useState("");
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("dest");
+    if (requested && DESTINATIONS.some((item) => `${item.cityName}|${item.countryCode}` === requested)) {
+      setDest(requested);
+    }
+  }, []);
+
+  const visibleHotels = useMemo(() => {
+    const nights = Math.max(1, Math.round((+new Date(checkout) - +new Date(checkin)) / 86_400_000));
+    const max = Number(maxNightly) || Infinity;
+    const keyword = facility.trim().toLocaleLowerCase("vi");
+    return hotels.filter((hotel) => {
+      const nightly = hotel.price / nights;
+      const facilityMatch = !keyword || (hotel.facilities || []).some((item) => item.toLocaleLowerCase("vi").includes(keyword));
+      return nightly <= max && (hotel.starRating || 0) >= minStars && (hotel.rating || 0) >= minRating && facilityMatch;
+    });
+  }, [hotels, checkin, checkout, maxNightly, minStars, minRating, facility]);
 
   async function search() {
     setLoading(true);
@@ -81,6 +104,7 @@ export default function HotelsPage() {
       checkIn: h.checkin, checkOut: h.checkout, guests: String(adults),
       price: String(h.price), currency: h.currency,
     });
+    if (h.offerToken) qs.set("offerToken", h.offerToken);
     router.push(`/hotels/detail?${qs.toString()}`);
   }
 
@@ -117,6 +141,7 @@ export default function HotelsPage() {
       checkIn: h.checkin, checkOut: h.checkout, guests: String(adults),
       price: String(h.price), currency: h.currency,
     });
+    if (h.offerToken) qs.set("offerToken", h.offerToken);
     if (h.image) qs.set("image", h.image);
     if (h.address) qs.set("address", h.address);
     router.push(`/checkout?${qs.toString()}`);
@@ -149,7 +174,7 @@ export default function HotelsPage() {
         </div>
         <div>
           <label className="label">Nhận phòng</label>
-          <input className="field mt-1" type="date" value={checkin} onChange={(e) => setCheckin(e.target.value)} />
+          <input className="field mt-1" type="date" min={todayPlus(0)} value={checkin} onChange={(e) => setCheckin(e.target.value)} />
         </div>
         <div>
           <label className="label">Trả phòng</label>
@@ -165,6 +190,31 @@ export default function HotelsPage() {
           </button>
         </div>
       </div>
+
+      {hotels.length > 0 && (
+        <div className="mt-4 grid gap-3 rounded-2xl border border-teal/10 bg-white/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="label">Giá tối đa/đêm (VND)</label>
+            <input className="field mt-1" type="number" min={0} step={100000} value={maxNightly} onChange={(event) => setMaxNightly(event.target.value)} placeholder="Ví dụ 1000000" />
+          </div>
+          <div>
+            <label className="label">Hạng sao tối thiểu</label>
+            <select className="field mt-1" value={minStars} onChange={(event) => setMinStars(Number(event.target.value))}>
+              {[0, 3, 4, 5].map((value) => <option key={value} value={value}>{value ? `${value} sao` : "Tất cả"}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Điểm đánh giá tối thiểu</label>
+            <select className="field mt-1" value={minRating} onChange={(event) => setMinRating(Number(event.target.value))}>
+              {[0, 7, 8, 9].map((value) => <option key={value} value={value}>{value ? `${value}/10` : "Tất cả"}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Tiện ích</label>
+            <input className="field mt-1" value={facility} onChange={(event) => setFacility(event.target.value)} placeholder="Hồ bơi, WiFi…" />
+          </div>
+        </div>
+      )}
 
       {source && (
         <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
@@ -182,7 +232,7 @@ export default function HotelsPage() {
       )}
 
       <div className="mt-6 grid gap-5">
-        {hotels.map((h) => (
+        {visibleHotels.map((h) => (
           <div key={h.offerId} className="card overflow-hidden p-0 sm:flex">
             {/* Ảnh — hover để xem nhanh (slideshow ảnh hoặc video nếu có) */}
             <HotelMedia
@@ -230,6 +280,9 @@ export default function HotelsPage() {
                 <div className="text-right">
                   <div className="font-mono text-lg text-teal">{money(h.price, h.currency)}</div>
                   <div className="text-xs text-ink/50">tổng kỳ lưu trú</div>
+                  <div className="text-xs text-jade">
+                    {money(Math.round(h.price / Math.max(1, Math.round((+new Date(h.checkout) - +new Date(h.checkin)) / 86_400_000))), h.currency)}/đêm
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button className="btn-ghost whitespace-nowrap" onClick={() => openDetail(h)}>Chi tiết</button>
@@ -241,7 +294,7 @@ export default function HotelsPage() {
             </div>
           </div>
         ))}
-        {!loading && source && hotels.length === 0 && (
+        {!loading && source && visibleHotels.length === 0 && (
           <p className="text-ink/60">Không có kết quả phù hợp. Thử đổi điểm đến hoặc ngày.</p>
         )}
       </div>

@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { jwtSecret } from "@/lib/env";
 
-const secret = () =>
-  new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret-doi-trong-production");
+const secret = () => new TextEncoder().encode(jwtSecret());
 
 const PROTECTED = ["/assistant", "/bookings", "/checkout", "/booking"];
 const ADMIN_ONLY = ["/admin"];

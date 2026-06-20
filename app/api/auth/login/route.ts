@@ -3,15 +3,18 @@ import { z } from "zod";
 import { bootstrap } from "@/lib/bootstrap";
 import { getUserByEmail } from "@/lib/db";
 import { verifyPassword, createSession } from "@/lib/auth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 const schema = z.object({
-  email: z.string().email("Email không hợp lệ"),
-  password: z.string().min(1, "Nhập mật khẩu"),
+  email: z.string().trim().email("Email không hợp lệ").max(254, "Email quá dài"),
+  password: z.string().min(1, "Nhập mật khẩu").max(128, "Mật khẩu quá dài"),
 });
 
 export async function POST(req: Request) {
+  const rate = checkRateLimit(req, { namespace: "login", limit: 10, windowMs: 15 * 60_000 });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   await bootstrap();
   const body = await req.json().catch(() => ({}));
   const parsed = schema.safeParse(body);

@@ -53,7 +53,7 @@ export default function RegisterPage() {
             <label className="label">Mật khẩu</label>
             <input className="field mt-1" type="password" value={password}
               onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Tối thiểu 6 ký tự" />
+              onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Tối thiểu 8 ký tự" />
           </div>
           <button onClick={submit} disabled={loading} className="btn-primary w-full disabled:opacity-50">
             {loading ? "Đang tạo…" : "Tạo tài khoản"}

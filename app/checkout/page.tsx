@@ -32,6 +32,7 @@ function CheckoutInner() {
     currency: sp.get("currency") || "VND",
     image: sp.get("image") || "",
     address: sp.get("address") || "",
+    offerToken: sp.get("offerToken") || "",
   };
 
   const [phase, setPhase] = useState<"review" | "paying" | "error">("review");
@@ -53,6 +54,7 @@ function CheckoutInner() {
           checkIn: offer.checkIn,
           checkOut: offer.checkOut,
           guests: offer.guests,
+          offerToken: offer.offerToken,
         }),
       });
       if (res.status === 401) return router.push(`/login?next=/checkout`);

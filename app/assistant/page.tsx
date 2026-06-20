@@ -9,6 +9,7 @@ type Hotel = {
   hotelId: string; offerId: string; name: string; image?: string; address?: string; city?: string;
   rateName?: string; price: number; currency: string; rating?: number; starRating?: number;
   checkIn: string; checkOut: string; guests: number;
+  offerToken?: string;
 };
 type Msg = {
   role: "user" | "assistant"; content: string;
@@ -84,7 +85,7 @@ function AssistantInner() {
             suggestedHotels: data.suggestedHotels,
           },
         ]);
-      } catch (e: any) {
+      } catch {
         setMessages((m) => [
           ...m,
           { role: "assistant", content: "Xin lỗi, có lỗi khi kết nối. Bạn thử lại giúp mình nhé." },
@@ -145,6 +146,7 @@ function AssistantInner() {
                       checkIn: h.checkIn, checkOut: h.checkOut, guests: String(h.guests),
                       price: String(h.price), currency: h.currency,
                     });
+                    if (h.offerToken) qs.set("offerToken", h.offerToken);
                     return (
                       <Link
                         key={h.offerId}

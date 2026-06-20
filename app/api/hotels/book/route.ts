@@ -4,6 +4,7 @@ import { bootstrap } from "@/lib/bootstrap";
 import { getSessionUser } from "@/lib/auth";
 import { isConfigured, book } from "@/lib/liteapi";
 import { getBookingByTransactionId, finalizeBooking } from "@/lib/db";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -17,6 +18,8 @@ function splitName(full: string): { firstName: string; lastName: string } {
 }
 
 export async function POST(req: Request) {
+  const rate = checkRateLimit(req, { namespace: "complete-booking", limit: 20, windowMs: 60 * 60_000 });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   await bootstrap();
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
@@ -31,6 +34,9 @@ export async function POST(req: Request) {
   if (!draft) return NextResponse.json({ error: "Không tìm thấy đơn tương ứng." }, { status: 404 });
   if (draft.status === "confirmed") {
     return NextResponse.json({ booking: draft, alreadyConfirmed: true });
+  }
+  if (draft.status !== "payment_pending") {
+    return NextResponse.json({ error: "Trạng thái đơn không cho phép hoàn tất thanh toán." }, { status: 409 });
   }
   if (!draft.provider_ref) {
     return NextResponse.json({ error: "Đơn thiếu prebookId." }, { status: 400 });

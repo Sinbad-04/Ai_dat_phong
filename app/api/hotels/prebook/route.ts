@@ -4,25 +4,27 @@ import { bootstrap } from "@/lib/bootstrap";
 import { getSessionUser } from "@/lib/auth";
 import { isConfigured, prebook, sdkPublicKey } from "@/lib/liteapi";
 import { createBooking } from "@/lib/db";
+import { validateStayDates } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { verifyOfferToken } from "@/lib/offer-token";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const schema = z.object({
-  offerId: z.string(),
-  hotelId: z.string(),
-  name: z.string(),
-  roomDescription: z.string().optional(),
+  offerId: z.string().min(1).max(200),
+  hotelId: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(200),
+  roomDescription: z.string().trim().max(500).optional(),
   checkIn: z.string(),
   checkOut: z.string(),
   guests: z.number().int().min(1).max(9),
+  offerToken: z.string().min(20),
 });
 
-function nightsBetween(a: string, b: string) {
-  return Math.max(1, Math.round((+new Date(b + "T00:00:00") - +new Date(a + "T00:00:00")) / 86400000));
-}
-
 export async function POST(req: Request) {
+  const rate = checkRateLimit(req, { namespace: "prebook", limit: 10, windowMs: 60 * 60_000 });
+  if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   await bootstrap();
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
@@ -35,7 +37,16 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const o = parsed.data;
+  const trusted = await verifyOfferToken(parsed.data.offerToken);
+  if (!trusted || trusted.offerId !== parsed.data.offerId) {
+    return NextResponse.json(
+      { error: "Thông tin ưu đãi không hợp lệ hoặc đã hết hạn. Vui lòng tìm lại." },
+      { status: 400 }
+    );
+  }
+  const o = trusted;
+  const stay = validateStayDates(o.checkIn, o.checkOut);
+  if (stay.error) return NextResponse.json({ error: stay.error }, { status: 400 });
 
   try {
     // 1) Khoá giá & lấy thông tin cho Payment SDK
@@ -45,7 +56,6 @@ export async function POST(req: Request) {
     }
 
     // 2) Tạo đơn ở trạng thái chờ thanh toán, gắn transactionId để xác nhận sau
-    const nights = nightsBetween(o.checkIn, o.checkOut);
     const booking = await createBooking({
       user_id: user.id,
       room_id: o.hotelId,
@@ -54,7 +64,7 @@ export async function POST(req: Request) {
       check_out: o.checkOut,
       guests: o.guests,
       package_id: null,
-      nights,
+      nights: stay.nights,
       total_price: pb.price,
       deposit: pb.price, // thanh toán toàn phần qua cổng LiteAPI
       currency: pb.currency,

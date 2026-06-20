@@ -55,6 +55,19 @@ function BookingsInner() {
     fetch("/api/bookings").then((r) => r.json()).then((d) => setBookings(d.bookings || []));
   }
 
+  async function cancelBooking(id: string) {
+    if (!window.confirm("Bạn chắc chắn muốn hủy đơn này?")) return;
+    setErr("");
+    const response = await fetch("/api/bookings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await response.json();
+    if (!response.ok) return setErr(data.error || "Không hủy được đơn");
+    refreshBookings();
+  }
+
   const room = useMemo(() => rooms.find((r) => r.id === roomId), [rooms, roomId]);
   const nights = useMemo(() => {
     const n = Math.round((+new Date(checkOut) - +new Date(checkIn)) / 86400000);
@@ -203,6 +216,14 @@ function BookingsInner() {
                     <div className="font-mono text-xs text-teal mt-1">
                       Tổng {money(b.total_price, b.currency || "VND")} · cọc {money(b.deposit, b.currency || "VND")}
                     </div>
+                    {["pending", "payment_pending"].includes(b.status) && (
+                      <button
+                        onClick={() => cancelBooking(b.id)}
+                        className="mt-2 text-xs text-coral underline"
+                      >
+                        Hủy đơn
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -215,6 +236,10 @@ function BookingsInner() {
 }
 
 function PaymentGuidance({ booking, onNew }: { booking: Booking; onNew: () => void }) {
+  const bankName = process.env.NEXT_PUBLIC_BANK_NAME;
+  const bankAccount = process.env.NEXT_PUBLIC_BANK_ACCOUNT;
+  const bankHolder = process.env.NEXT_PUBLIC_BANK_HOLDER;
+  const configured = !!(bankName && bankAccount && bankHolder);
   return (
     <div>
       <div className="flex items-center gap-2 text-jade mb-2">
@@ -228,22 +253,20 @@ function PaymentGuidance({ booking, onNew }: { booking: Booking; onNew: () => vo
 
       <div className="mt-5 rounded-xl bg-sunset/10 border border-sunset/30 p-4">
         <div className="text-sm font-medium text-midnight">Hướng dẫn thanh toán cọc {vnd(booking.deposit)}</div>
-        <ol className="mt-2 text-sm text-ink/70 space-y-1.5 list-decimal list-inside">
-          <li>Chuyển khoản tới: <span className="font-mono">An Lanh Bay Resort · 0123456789 · Vietcombank</span></li>
-          <li>Nội dung: <span className="font-mono">COC {booking.id}</span></li>
-          <li>Hoặc bấm nút bên dưới để mở cổng thanh toán an toàn của ngân hàng và tự nhập thông tin.</li>
-        </ol>
+        {configured ? (
+          <ol className="mt-2 text-sm text-ink/70 space-y-1.5 list-decimal list-inside">
+            <li>Chuyển khoản tới: <span className="font-mono">{bankHolder} · {bankAccount} · {bankName}</span></li>
+            <li>Nội dung: <span className="font-mono">COC {booking.id}</span></li>
+            <li>Quản trị viên sẽ đối soát và xác nhận đơn sau khi nhận cọc.</li>
+          </ol>
+        ) : (
+          <p className="mt-2 text-sm text-coral">
+            Resort chưa cấu hình tài khoản nhận cọc. Vui lòng liên hệ lễ tân trước khi chuyển tiền.
+          </p>
+        )}
         <p className="text-xs text-ink/50 mt-3">
           🔒 Resort <b>không lưu trữ</b> thông tin thẻ của bạn. Mọi thao tác nhập thẻ diễn ra trên cổng ngân hàng.
         </p>
-        <a
-          href={`https://sandbox.vnpayment.vn/`}
-          target="_blank" rel="noreferrer"
-          className="btn-gold mt-3"
-          onClick={(e) => { e.preventDefault(); alert("Demo: tại đây chuyển hướng tới cổng thanh toán của ngân hàng. Resort không nhận/giữ dữ liệu thẻ."); }}
-        >
-          Mở cổng thanh toán an toàn →
-        </a>
       </div>
 
       <button onClick={onNew} className="btn-ghost w-full mt-4">Đặt phòng khác</button>

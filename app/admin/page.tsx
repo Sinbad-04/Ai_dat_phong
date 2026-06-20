@@ -14,6 +14,9 @@ export default function AdminPage() {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [tab, setTab] = useState<"bookings" | "users">("bookings");
+  const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   useEffect(() => {
     load();
@@ -25,18 +28,52 @@ export default function AdminPage() {
   }
 
   async function setStatus(id: string, status: string) {
-    await fetch("/api/admin/bookings", {
+    setError("");
+    const response = await fetch("/api/admin/bookings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "Không cập nhật được trạng thái");
+      return;
+    }
     load();
   }
 
-  const revenue = bookings
+  async function setRole(id: string, role: "user" | "admin") {
+    setError("");
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, role }),
+    });
+    const data = await response.json();
+    if (!response.ok) return setError(data.error || "Không cập nhật được vai trò");
+    load();
+  }
+
+  const revenueByCurrency = bookings
     .filter((b) => b.status !== "cancelled")
-    .reduce((s, b) => s + b.total_price, 0);
+    .reduce<Record<string, number>>((totals, booking) => {
+      const currency = booking.currency || "VND";
+      totals[currency] = (totals[currency] || 0) + booking.total_price;
+      return totals;
+    }, {});
+  const revenue = Object.entries(revenueByCurrency)
+    .map(([currency, total]) => money(total, currency))
+    .join(" · ") || vnd(0);
   const pending = bookings.filter((b) => b.status === "pending").length;
+  const currentItems = tab === "bookings" ? bookings : users;
+  const pageCount = Math.max(1, Math.ceil(currentItems.length / pageSize));
+  const pagedBookings = bookings.slice((page - 1) * pageSize, page * pageSize);
+  const pagedUsers = users.slice((page - 1) * pageSize, page * pageSize);
+
+  function selectTab(value: "bookings" | "users") {
+    setTab(value);
+    setPage(1);
+  }
 
   return (
     <div className="container-px py-10">
@@ -46,14 +83,16 @@ export default function AdminPage() {
       <div className="grid sm:grid-cols-4 gap-4 mb-8">
         <Stat label="Tổng đơn" value={String(bookings.length)} />
         <Stat label="Chờ xác nhận" value={String(pending)} accent />
-        <Stat label="Doanh thu (chưa huỷ)" value={vnd(revenue)} />
+        <Stat label="Doanh thu (chưa huỷ)" value={revenue} />
         <Stat label="Khách hàng" value={String(users.length)} />
       </div>
 
+      {error && <p className="mb-4 rounded-xl bg-coral/15 px-4 py-3 text-sm text-coral">{error}</p>}
+
       <div className="flex gap-2 mb-5">
-        <button onClick={() => setTab("bookings")}
+        <button onClick={() => selectTab("bookings")}
           className={tab === "bookings" ? "btn-primary" : "btn-ghost"}>Đặt phòng</button>
-        <button onClick={() => setTab("users")}
+        <button onClick={() => selectTab("users")}
           className={tab === "users" ? "btn-primary" : "btn-ghost"}>Người dùng</button>
       </div>
 
@@ -75,7 +114,7 @@ export default function AdminPage() {
                 {bookings.length === 0 && (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-ink/50">Chưa có đơn đặt phòng nào.</td></tr>
                 )}
-                {bookings.map((b) => (
+                {pagedBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-teal/3">
                     <td className="px-4 py-3 text-ink/70">{b.user_email}</td>
                     <td className="px-4 py-3 font-medium">
@@ -91,11 +130,11 @@ export default function AdminPage() {
                     <td className="px-4 py-3"><Badge status={b.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">
-                        {b.status !== "confirmed" && (
+                        {b.status === "pending" && (
                           <button onClick={() => setStatus(b.id, "confirmed")}
                             className="text-xs px-2.5 py-1 rounded-full bg-jade/15 text-jade hover:bg-jade/25">Xác nhận</button>
                         )}
-                        {b.status !== "cancelled" && (
+                        {["pending", "payment_pending"].includes(b.status) && (
                           <button onClick={() => setStatus(b.id, "cancelled")}
                             className="text-xs px-2.5 py-1 rounded-full bg-coral/15 text-coral hover:bg-coral/25">Huỷ</button>
                         )}
@@ -117,10 +156,11 @@ export default function AdminPage() {
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Vai trò</th>
                   <th className="px-4 py-3">Tạo lúc</th>
+                  <th className="px-4 py-3">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-teal/8">
-                {users.map((u) => (
+                {pagedUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-teal/3">
                     <td className="px-4 py-3 font-medium">{u.name}</td>
                     <td className="px-4 py-3 text-ink/70">{u.email}</td>
@@ -130,11 +170,27 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-ink/55">{fmtDate(u.created_at)}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setRole(u.id, u.role === "admin" ? "user" : "admin")}
+                        className="text-xs rounded-full border border-teal/20 px-2.5 py-1 text-teal"
+                      >
+                        {u.role === "admin" ? "Hạ quyền" : "Đặt làm admin"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {currentItems.length > pageSize && (
+        <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+          <button className="btn-ghost" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>← Trước</button>
+          <span>Trang {page}/{pageCount}</span>
+          <button className="btn-ghost" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={page === pageCount}>Sau →</button>
         </div>
       )}
     </div>

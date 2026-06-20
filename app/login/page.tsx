@@ -7,7 +7,8 @@ import Link from "next/link";
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/assistant";
+  const requestedNext = params.get("next") || "/assistant";
+  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/assistant";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -57,13 +58,11 @@ function LoginInner() {
           <button onClick={submit} disabled={loading} className="btn-primary w-full disabled:opacity-50">
             {loading ? "Đang đăng nhập…" : "Đăng nhập"}
           </button>
+          <Link href="/forgot-password" className="block text-center text-sm text-teal">Quên mật khẩu?</Link>
         </div>
 
         <p className="text-sm text-ink/60 mt-6 text-center">
           Chưa có tài khoản? <Link href="/register" className="text-teal font-medium">Tạo ngay</Link>
-        </p>
-        <p className="text-xs text-ink/40 mt-4 text-center">
-          Tài khoản admin demo: <span className="font-mono">admin@resort.vn / Admin@12345</span>
         </p>
       </div>
     </div>

@@ -7,6 +7,7 @@ export type Room = {
   name: string;
   type: string;
   capacity: number;       // số khách tối đa
+  inventory: number;      // số phòng/villa có thể bán đồng thời
   beds: string;
   size: number;           // m2
   view: string;
@@ -29,6 +30,7 @@ export const ROOMS: Room[] = [
     name: "Deluxe Garden View",
     type: "Deluxe",
     capacity: 2,
+    inventory: 8,
     beds: "1 giường King hoặc 2 giường đơn",
     size: 38,
     view: "Vườn nhiệt đới",
@@ -42,6 +44,7 @@ export const ROOMS: Room[] = [
     name: "Deluxe Ocean View",
     type: "Deluxe",
     capacity: 2,
+    inventory: 6,
     beds: "1 giường King",
     size: 42,
     view: "Hướng biển",
@@ -55,6 +58,7 @@ export const ROOMS: Room[] = [
     name: "Family Suite 2 Phòng Ngủ",
     type: "Suite",
     capacity: 4,
+    inventory: 4,
     beds: "1 King + 2 đơn",
     size: 75,
     view: "Hồ bơi & biển",
@@ -68,6 +72,7 @@ export const ROOMS: Room[] = [
     name: "Honeymoon Pool Villa",
     type: "Villa",
     capacity: 2,
+    inventory: 3,
     beds: "1 King canopy",
     size: 110,
     view: "Biển riêng tư",
@@ -81,6 +86,7 @@ export const ROOMS: Room[] = [
     name: "Grand Beach Villa 3 Phòng Ngủ",
     type: "Villa",
     capacity: 6,
+    inventory: 2,
     beds: "2 King + 2 đơn",
     size: 180,
     view: "Mặt tiền biển",
