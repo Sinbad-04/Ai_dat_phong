@@ -26,18 +26,20 @@ const STARTERS = [
   "Chính sách huỷ phòng và trẻ em thế nào?",
   "Có nhận thú cưng không?",
 ];
+const CHAT_STORAGE_KEY = "an-lanh-chat-history-v1";
+const INITIAL_MESSAGES: Msg[] = [
+  {
+    role: "assistant",
+    content: "Xin chào! Mình là Lành, trợ lý du lịch của An Lành Bay 👋 Hôm nay mình có thể giúp gì cho bạn?",
+  },
+];
 
 function AssistantInner() {
   const params = useSearchParams();
   const initialQ = params.get("q") || "";
   const [rooms, setRooms] = useState<Record<string, Room>>({});
-  const [messages, setMessages] = useState<Msg[]>([
-    {
-      role: "assistant",
-      content:
-        "Xin chào! Mình là Lành, trợ lý đặt phòng của An Lành Bay 🌊 Cho mình biết bạn đi mấy người, mấy đêm, ngân sách và mục đích chuyến đi nhé — mình sẽ gợi ý phòng & gói phù hợp nhất.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Msg[]>(INITIAL_MESSAGES);
+  const [historyReady, setHistoryReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<string>("");
@@ -53,6 +55,30 @@ function AssistantInner() {
         setRooms(map);
       });
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const valid = Array.isArray(parsed) && parsed.length > 0 && parsed.length <= 50 && parsed.every(
+          (item) => item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string"
+        );
+        if (valid) {
+          setMessages(parsed);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(CHAT_STORAGE_KEY);
+    } finally {
+      setHistoryReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!historyReady) return;
+    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-50)));
+  }, [messages, historyReady]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -71,7 +97,7 @@ function AssistantInner() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            messages: next.map(({ role, content }) => ({ role, content })),
+            messages: next.slice(-30).map(({ role, content }) => ({ role, content })),
           }),
         });
         const data = await res.json();
@@ -100,12 +126,12 @@ function AssistantInner() {
   );
 
   useEffect(() => {
-    if (initialQ && !sentInitial.current) {
+    if (historyReady && initialQ && !sentInitial.current) {
       sentInitial.current = true;
       send(initialQ);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQ]);
+  }, [initialQ, historyReady]);
 
   return (
     <div className="container-px py-8 max-w-3xl">

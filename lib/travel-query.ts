@@ -8,6 +8,21 @@ function normalize(text: string): string {
     .replace(/đ/g, "d");
 }
 
+export function isGreetingOnly(text: string): boolean {
+  const value = normalize(text).replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  return /^(hi|hello|hey|alo|chao|chao ban|xin chao|xin chao ban)$/.test(value);
+}
+
+export function declinesAreaPreference(text: string): boolean {
+  const value = normalize(text);
+  return ["khong uu tien khu vuc", "khu nao cung duoc", "bat ky khu nao", "bo qua khu vuc"].some((item) => value.includes(item));
+}
+
+export function declinesBudgetFilter(text: string): boolean {
+  const value = normalize(text);
+  return ["khong gioi han ngan sach", "xem tat ca muc gia", "bo qua ngan sach", "chua co ngan sach"].some((item) => value.includes(item));
+}
+
 export function parseMaxNightlyBudget(text: string): number | null {
   const match = normalize(text).match(
     /(?:<=|<|duoi|toi da|khong qua|nho hon)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k|vnd|d)?\b/i
@@ -49,4 +64,3 @@ export function parseStayDates(text: string, now = new Date()): { checkIn: strin
   }
   return validateStayDates(checkIn, checkOut).error ? null : { checkIn, checkOut };
 }
-

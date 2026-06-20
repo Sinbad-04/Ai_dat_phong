@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
 import { RESORT, ROOMS } from "@/lib/data/knowledge";
-import { findDestination } from "@/lib/data/destinations";
+import { findDestination, findDestinationArea, hotelMatchesArea } from "@/lib/data/destinations";
 import { validateStayDates } from "@/lib/validation";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { createOfferToken } from "@/lib/offer-token";
@@ -40,6 +40,7 @@ export async function GET(req: Request) {
   if (!rate.allowed) return rateLimitResponse(rate.retryAfter);
   const { searchParams } = new URL(req.url);
   const dest = searchParams.get("dest") || "Nha Trang|VN";
+  const areaValue = searchParams.get("area") || "";
   const checkin = searchParams.get("checkin") || "";
   const checkout = searchParams.get("checkout") || "";
   const rawAdults = Number(searchParams.get("adults") || 2);
@@ -62,6 +63,8 @@ export async function GET(req: Request) {
 
   const d = findDestination(dest);
   if (!d) return NextResponse.json({ error: "Điểm đến không hợp lệ" }, { status: 400 });
+  const area = areaValue ? findDestinationArea(areaValue, d) : undefined;
+  if (areaValue && !area) return NextResponse.json({ error: "Khu vực không hợp lệ" }, { status: 400 });
 
   try {
     const hotels = await searchHotels({
@@ -71,7 +74,8 @@ export async function GET(req: Request) {
       checkout,
       adults,
     });
-    const signedHotels = await Promise.all(hotels.map(async (hotel) => ({
+    const matchingHotels = area ? hotels.filter((hotel) => hotelMatchesArea(hotel, area)) : hotels;
+    const signedHotels = await Promise.all(matchingHotels.map(async (hotel) => ({
       ...hotel,
       offerToken: await createOfferToken({
         offerId: hotel.offerId,
@@ -86,8 +90,10 @@ export async function GET(req: Request) {
     return NextResponse.json({
       source: "liteapi",
       note:
-        hotels.length === 0
-          ? "Không tìm thấy phòng trống cho lựa chọn này. Thử đổi ngày hoặc điểm đến (Singapore/Bangkok/Paris nhiều dữ liệu sandbox hơn)."
+        matchingHotels.length === 0
+          ? area
+            ? `Không tìm thấy phòng khớp khu ${area.label}. Thử chọn “Tất cả khu vực” hoặc đổi ngày.`
+            : "Không tìm thấy phòng trống cho lựa chọn này. Thử đổi ngày hoặc điểm đến (Singapore/Bangkok/Paris nhiều dữ liệu sandbox hơn)."
           : undefined,
       hotels: signedHotels,
     });

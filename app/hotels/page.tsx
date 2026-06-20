@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DESTINATIONS } from "@/lib/data/destinations";
+import { areasForDestination, DESTINATIONS, findDestination } from "@/lib/data/destinations";
 import { videoFor } from "@/lib/data/hotel-videos";
 import HotelMedia from "@/components/HotelMedia";
 import { money, fmtDate } from "@/lib/format";
@@ -44,6 +44,7 @@ function Stars({ n }: { n: number }) {
 export default function HotelsPage() {
   const router = useRouter();
   const [dest, setDest] = useState("Nha Trang|VN");
+  const [area, setArea] = useState("");
   const [checkin, setCheckin] = useState(todayPlus(14));
   const [checkout, setCheckout] = useState(todayPlus(16));
   const [adults, setAdults] = useState(2);
@@ -61,11 +62,23 @@ export default function HotelsPage() {
   const [facility, setFacility] = useState("");
 
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("dest");
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("dest");
     if (requested && DESTINATIONS.some((item) => `${item.cityName}|${item.countryCode}` === requested)) {
       setDest(requested);
+      const destination = findDestination(requested);
+      const requestedArea = params.get("area") || "";
+      if (destination && areasForDestination(destination).some((item) => item.value === requestedArea)) {
+        setArea(requestedArea);
+      }
     }
   }, []);
+
+  const selectedDestination = useMemo(() => findDestination(dest), [dest]);
+  const destinationAreas = useMemo(
+    () => selectedDestination ? areasForDestination(selectedDestination) : [],
+    [selectedDestination]
+  );
 
   const visibleHotels = useMemo(() => {
     const nights = Math.max(1, Math.round((+new Date(checkout) - +new Date(checkin)) / 86_400_000));
@@ -84,6 +97,7 @@ export default function HotelsPage() {
     setDone(null);
     try {
       const qs = new URLSearchParams({ dest, checkin, checkout, adults: String(adults) });
+      if (area) qs.set("area", area);
       const res = await fetch(`/api/hotels?${qs.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Tìm kiếm thất bại");
@@ -156,10 +170,10 @@ export default function HotelsPage() {
         của LiteAPI — hệ thống của chúng tôi không lưu thông tin thẻ.
       </p>
 
-      <div className="card mt-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="card mt-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <label className="label">Điểm đến</label>
-          <select className="field mt-1" value={dest} onChange={(e) => setDest(e.target.value)}>
+          <select className="field mt-1" value={dest} onChange={(e) => { setDest(e.target.value); setArea(""); }}>
             <optgroup label="Việt Nam">
               {DESTINATIONS.filter((d) => !d.intl).map((d) => (
                 <option key={`${d.cityName}|${d.countryCode}`} value={`${d.cityName}|${d.countryCode}`}>{d.label}</option>
@@ -170,6 +184,20 @@ export default function HotelsPage() {
                 <option key={`${d.cityName}|${d.countryCode}`} value={`${d.cityName}|${d.countryCode}`}>{d.label}</option>
               ))}
             </optgroup>
+          </select>
+        </div>
+        <div>
+          <label className="label">Khu vực</label>
+          <select
+            className="field mt-1"
+            value={area}
+            onChange={(event) => setArea(event.target.value)}
+            disabled={destinationAreas.length === 0}
+          >
+            <option value="">Tất cả khu vực</option>
+            {destinationAreas.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
           </select>
         </div>
         <div>
@@ -184,7 +212,7 @@ export default function HotelsPage() {
           <label className="label">Số khách</label>
           <input className="field mt-1" type="number" min={1} max={9} value={adults} onChange={(e) => setAdults(Number(e.target.value))} />
         </div>
-        <div className="sm:col-span-2 lg:col-span-4">
+        <div className="sm:col-span-2 lg:col-span-5">
           <button className="btn-gold" onClick={search} disabled={loading}>
             {loading ? "Đang tìm…" : "Tìm khách sạn"}
           </button>

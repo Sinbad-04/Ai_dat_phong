@@ -1,6 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseGuests, parseMaxNightlyBudget, parseStayDates } from "../lib/travel-query";
+import {
+  declinesAreaPreference,
+  declinesBudgetFilter,
+  isGreetingOnly,
+  parseGuests,
+  parseMaxNightlyBudget,
+  parseStayDates,
+} from "../lib/travel-query";
+import { detectDestinationArea, hotelMatchesArea } from "../lib/data/destinations";
+
+test("recognizes short greetings without treating normal requests as greetings", () => {
+  assert.equal(isGreetingOnly("Hi"), true);
+  assert.equal(isGreetingOnly("Xin chào bạn!"), true);
+  assert.equal(isGreetingOnly("Chào, tôi muốn đi Hà Nội"), false);
+});
+
+test("recognizes optional search filters being skipped", () => {
+  assert.equal(declinesAreaPreference("Khu nào cũng được"), true);
+  assert.equal(declinesBudgetFilter("Xem tất cả mức giá"), true);
+});
+
+test("detects and matches specific hotel areas", () => {
+  const area = detectDestinationArea("Tôi muốn ở gần Hồ Tây");
+  assert.equal(area?.value, "ho-tay");
+  assert.equal(hotelMatchesArea({ address: "12 phố Quảng An, Tây Hồ" }, area!), true);
+  assert.equal(hotelMatchesArea({ address: "Phố Huế, Hai Bà Trưng" }, area!), false);
+});
 
 test("parses common Vietnamese nightly budgets", () => {
   assert.equal(parseMaxNightlyBudget("giá < 1 triệu"), 1_000_000);
@@ -23,4 +49,3 @@ test("parses ISO and Vietnamese date ranges", () => {
     checkOut: "2099-07-12",
   });
 });
-
