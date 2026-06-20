@@ -14,6 +14,7 @@ export type Room = {
   basePrice: number;      // VND / đêm (giá tham chiếu mùa thường)
   amenities: string[];
   image: string;          // emoji/biểu tượng minh hoạ (giữ nhẹ, không phụ thuộc IP)
+  photo?: string;         // ảnh phòng dùng cho thẻ giao diện
   blurb: string;
 };
 
@@ -51,6 +52,7 @@ export const ROOMS: Room[] = [
     basePrice: 3100000,
     amenities: ["Ban công hướng biển", "Máy lạnh", "Minibar", "Wifi", "Bồn tắm", "Máy pha cà phê"],
     image: "🌊",
+    photo: "/images/rooms/deluxe-ocean-view.jpg",
     blurb: "View biển trực diện, đón bình minh ngay trên ban công. Best-seller cho cặp đôi.",
   },
   {
@@ -65,6 +67,7 @@ export const ROOMS: Room[] = [
     basePrice: 5400000,
     amenities: ["2 phòng ngủ", "Phòng khách", "Bếp nhỏ", "2 nhà tắm", "Ban công lớn", "Khu vui chơi trẻ em gần kề"],
     image: "👨‍👩‍👧",
+    photo: "/images/rooms/family-suite.jpg",
     blurb: "Không gian rộng cho gia đình có trẻ nhỏ, gần hồ bơi và khu trẻ em.",
   },
   {
@@ -79,6 +82,7 @@ export const ROOMS: Room[] = [
     basePrice: 9800000,
     amenities: ["Hồ bơi riêng", "Sân vườn riêng", "Bồn tắm ngoài trời", "Bữa sáng tại villa", "Lối đi biển riêng"],
     image: "💍",
+    photo: "/images/rooms/honeymoon-pool-villa.jpg",
     blurb: "Villa biệt lập có hồ bơi riêng, lý tưởng cho tuần trăng mật và kỷ niệm.",
   },
   {

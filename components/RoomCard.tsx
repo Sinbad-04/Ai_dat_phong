@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { vnd } from "@/lib/format";
 
 export type RoomCardData = {
@@ -14,14 +15,26 @@ export type RoomCardData = {
   basePrice: number;
   amenities: string[];
   image: string;
+  photo?: string;
   blurb: string;
 };
 
 export default function RoomCard({ room, compact = false }: { room: RoomCardData; compact?: boolean }) {
   return (
     <article className="card overflow-hidden flex flex-col">
-      <div className="relative h-28 bg-gradient-to-br from-teal to-jade grid place-items-center text-4xl">
-        <span aria-hidden>{room.image}</span>
+      <div className="relative grid h-36 place-items-center overflow-hidden bg-gradient-to-br from-teal to-jade text-4xl">
+        {room.photo ? (
+          <Image
+            src={room.photo}
+            alt={`Không gian ${room.name}`}
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover transition duration-500 hover:scale-105"
+          />
+        ) : (
+          <span aria-hidden>{room.image}</span>
+        )}
+        {room.photo && <span className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/5" />}
         <span className="absolute top-3 left-3 text-[11px] font-medium uppercase tracking-wide bg-mist/90 text-teal px-2.5 py-1 rounded-full">
           {room.type}
         </span>
