@@ -20,8 +20,15 @@ export type RoomCardData = {
 };
 
 export default function RoomCard({ room, compact = false }: { room: RoomCardData; compact?: boolean }) {
+  const bookingHref = `/bookings?room=${room.id}`;
+
   return (
-    <article className="card overflow-hidden flex flex-col">
+    <article className="card group relative flex flex-col overflow-hidden transition hover:-translate-y-0.5 hover:shadow-lg">
+      <Link
+        href={bookingHref}
+        aria-label={`Xem và đặt ${room.name}`}
+        className="absolute inset-0 z-10 rounded-[inherit] focus:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2"
+      />
       <div className="relative grid h-36 place-items-center overflow-hidden bg-gradient-to-br from-teal to-jade text-4xl">
         {room.photo ? (
           <Image
@@ -29,7 +36,7 @@ export default function RoomCard({ room, compact = false }: { room: RoomCardData
             alt={`Không gian ${room.name}`}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-            className="object-cover transition duration-500 hover:scale-105"
+            className="object-cover transition duration-500 group-hover:scale-105"
           />
         ) : (
           <span aria-hidden>{room.image}</span>
@@ -41,7 +48,7 @@ export default function RoomCard({ room, compact = false }: { room: RoomCardData
       </div>
       <div className="p-5 flex flex-col gap-3 flex-1">
         <div>
-          <h3 className="font-display text-lg leading-tight">{room.name}</h3>
+          <h3 className="font-display text-lg leading-tight transition group-hover:text-teal">{room.name}</h3>
           <p className="text-sm text-ink/60 mt-1">{room.blurb}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-ink/70">
@@ -64,7 +71,7 @@ export default function RoomCard({ room, compact = false }: { room: RoomCardData
             <div className="text-[11px] text-ink/50">Giá tham chiếu / đêm</div>
             <div className="font-mono text-lg text-teal">{vnd(room.basePrice)}</div>
           </div>
-          <Link href={`/bookings?room=${room.id}`} className="btn-gold">
+          <Link href={bookingHref} className="btn-gold relative z-20">
             Đặt phòng
           </Link>
         </div>
