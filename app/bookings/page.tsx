@@ -14,6 +14,7 @@ type Booking = {
   id: string; room_name: string; check_in: string; check_out: string; guests: number;
   nights: number; total_price: number; deposit: number; status: string; package_id: string | null;
   currency?: string; source?: string;
+  guest_name?: string | null; guest_email?: string | null; guest_phone?: string | null; guest_address?: string | null;
 };
 
 function todayPlus(days: number) {
@@ -36,6 +37,10 @@ function BookingsInner() {
   const [guests, setGuests] = useState(2);
   const [packageId, setPackageId] = useState("");
   const [notes, setNotes] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestAddress, setGuestAddress] = useState("");
 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,6 +71,12 @@ function BookingsInner() {
     const data = await response.json();
     if (!response.ok) return setErr(data.error || "Không hủy được đơn");
     refreshBookings();
+    fetch("/api/auth/me").then((r) => r.json()).then((data) => {
+      if (data.user) {
+        setGuestName(data.user.name || "");
+        setGuestEmail(data.user.email || "");
+      }
+    });
   }
 
   const room = useMemo(() => rooms.find((r) => r.id === roomId), [rooms, roomId]);
@@ -86,7 +97,9 @@ function BookingsInner() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           roomId, checkIn, checkOut, guests,
-          packageId: packageId || null, notes: notes || undefined,
+          packageId: packageId || null,
+          guestName, guestEmail, guestPhone, guestAddress,
+          notes: notes || undefined,
         }),
       });
       const data = await res.json();
@@ -116,6 +129,38 @@ function BookingsInner() {
               {err && <div className="mb-4 text-sm text-coral bg-coral/10 rounded-lg px-3 py-2">{err}</div>}
 
               <div className="space-y-4">
+                <div>
+                  <h3 className="font-display text-lg">Thông tin người đặt</h3>
+                  <p className="mt-1 text-xs text-ink/50">Resort sử dụng thông tin này để xác nhận và liên hệ về đơn.</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Họ và tên</label>
+                    <input className="field mt-1" value={guestName} onChange={(e) => setGuestName(e.target.value)}
+                      autoComplete="name" maxLength={100} placeholder="Nguyễn Văn A" />
+                  </div>
+                  <div>
+                    <label className="label">Số điện thoại</label>
+                    <input className="field mt-1" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)}
+                      type="tel" autoComplete="tel" maxLength={20} placeholder="0901 234 567" />
+                  </div>
+                  <div>
+                    <label className="label">Email</label>
+                    <input className="field mt-1" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)}
+                      type="email" autoComplete="email" maxLength={254} placeholder="email@example.com" />
+                  </div>
+                  <div>
+                    <label className="label">Địa chỉ</label>
+                    <input className="field mt-1" value={guestAddress} onChange={(e) => setGuestAddress(e.target.value)}
+                      autoComplete="street-address" maxLength={250} placeholder="Quận/Huyện, Tỉnh/Thành phố" />
+                  </div>
+                </div>
+
+                <div className="border-t border-teal/10 pt-4">
+                  <h3 className="font-display text-lg">Thông tin lưu trú</h3>
+                </div>
+
                 <div>
                   <label className="label">Chọn phòng</label>
                   <select className="field mt-1" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
@@ -164,7 +209,7 @@ function BookingsInner() {
                     placeholder="Vd: cần nôi em bé, phòng tầng cao…" />
                 </div>
 
-                <button onClick={submit} disabled={loading || nights < 1} className="btn-primary w-full disabled:opacity-50">
+                <button onClick={submit} disabled={loading || nights < 1 || !guestName.trim() || !guestEmail.trim() || !guestPhone.trim() || !guestAddress.trim()} className="btn-primary w-full disabled:opacity-50">
                   {loading ? "Đang xử lý…" : `Đặt phòng · cọc ${vnd(estDeposit)}`}
                 </button>
                 <p className="text-xs text-ink/45 text-center">
@@ -213,6 +258,9 @@ function BookingsInner() {
                     <div className="text-xs text-ink/55 mt-1">
                       {fmtDate(b.check_in)} → {fmtDate(b.check_out)} · {b.nights} đêm · {b.guests} khách
                     </div>
+                    {b.guest_name && (
+                      <div className="mt-1 text-xs text-ink/55">Người đặt: {b.guest_name}{b.guest_phone ? ` · ${b.guest_phone}` : ""}</div>
+                    )}
                     <div className="font-mono text-xs text-teal mt-1">
                       Tổng {money(b.total_price, b.currency || "VND")} · cọc {money(b.deposit, b.currency || "VND")}
                     </div>
@@ -250,6 +298,11 @@ function PaymentGuidance({ booking, onNew }: { booking: Booking; onNew: () => vo
       <div className="text-sm text-ink/60 mt-1">
         {fmtDate(booking.check_in)} → {fmtDate(booking.check_out)} · {booking.nights} đêm · {booking.guests} khách
       </div>
+      {booking.guest_name && (
+        <div className="mt-2 rounded-lg bg-mist px-3 py-2 text-sm text-ink/65">
+          {booking.guest_name} · {booking.guest_phone}<br />{booking.guest_email}<br />{booking.guest_address}
+        </div>
+      )}
 
       <div className="mt-5 rounded-xl bg-sunset/10 border border-sunset/30 p-4">
         <div className="text-sm font-medium text-midnight">Hướng dẫn thanh toán cọc {vnd(booking.deposit)}</div>

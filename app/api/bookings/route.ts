@@ -17,6 +17,11 @@ const staticSchema = z.object({
   checkOut: z.string(),
   guests: z.number().int().min(1).max(10),
   packageId: z.string().nullable().optional(),
+  guestName: z.string().trim().min(2, "Họ tên phải có ít nhất 2 ký tự").max(100, "Họ tên quá dài"),
+  guestEmail: z.string().trim().email("Email không hợp lệ").max(254, "Email quá dài"),
+  guestPhone: z.string().trim().min(8, "Số điện thoại không hợp lệ").max(20, "Số điện thoại quá dài")
+    .refine((value) => /^\+?[0-9\s.-]+$/.test(value) && value.replace(/\D/g, "").length >= 8, "Số điện thoại không hợp lệ"),
+  guestAddress: z.string().trim().min(5, "Địa chỉ phải có ít nhất 5 ký tự").max(250, "Địa chỉ quá dài"),
   notes: z.string().trim().max(500).optional(),
 });
 
@@ -100,6 +105,10 @@ export async function POST(req: Request) {
       provider_ref: null,
       transaction_id: null,
       status: "pending",
+      guest_name: user.name,
+      guest_email: user.email,
+      guest_phone: null,
+      guest_address: null,
       notes: notes ?? null,
     }, room.inventory);
     if (!booking) return NextResponse.json({ error: "Hạng phòng đã hết trong khoảng ngày này" }, { status: 409 });
@@ -112,7 +121,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const { roomId, checkIn, checkOut, guests, packageId, notes } = parsed.data;
+  const { roomId, checkIn, checkOut, guests, packageId, guestName, guestEmail, guestPhone, guestAddress, notes } = parsed.data;
 
   const room = findRoom(roomId);
   if (!room) return NextResponse.json({ error: "Không tìm thấy phòng" }, { status: 404 });
@@ -146,10 +155,14 @@ export async function POST(req: Request) {
     provider_ref: null,
     transaction_id: null,
     status: "pending",
+    guest_name: guestName,
+    guest_email: guestEmail.toLowerCase(),
+    guest_phone: guestPhone,
+    guest_address: guestAddress,
     notes: notes ?? null,
   }, room.inventory);
   if (!booking) return NextResponse.json({ error: "Hạng phòng đã hết trong khoảng ngày này" }, { status: 409 });
-  await notifyCreated(user.email, booking.room_name, booking.check_in, booking.check_out, booking.id);
+  await notifyCreated(guestEmail, booking.room_name, booking.check_in, booking.check_out, booking.id);
   return NextResponse.json({ booking });
 }
 

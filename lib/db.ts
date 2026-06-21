@@ -40,6 +40,10 @@ export type Booking = {
   provider_ref: string | null;   // prebookId của LiteAPI
   transaction_id: string | null; // transactionId của Payment SDK
   status: "payment_pending" | "pending" | "confirmed" | "cancelled";
+  guest_name: string | null;
+  guest_email: string | null;
+  guest_phone: string | null;
+  guest_address: string | null;
   notes: string | null;
   created_at: string;
 };
@@ -112,6 +116,10 @@ export async function ensureSchema() {
       provider_ref TEXT,
       transaction_id TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
+      guest_name TEXT,
+      guest_email TEXT,
+      guest_phone TEXT,
+      guest_address TEXT,
       notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`;
@@ -129,6 +137,10 @@ export async function ensureSchema() {
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'static'`;
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS provider_ref TEXT`;
   await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS transaction_id TEXT`;
+  await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_name TEXT`;
+  await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_email TEXT`;
+  await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_phone TEXT`;
+  await s`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_address TEXT`;
   await s`ALTER TABLE bookings ALTER COLUMN room_id DROP NOT NULL`;
   await s`ALTER TABLE bookings ALTER COLUMN package_id DROP NOT NULL`;
   await s`CREATE UNIQUE INDEX IF NOT EXISTS bookings_transaction_id_unique ON bookings(transaction_id) WHERE transaction_id IS NOT NULL`;
@@ -251,13 +263,13 @@ export async function createBooking(b: Omit<Booking, "id" | "created_at">): Prom
   }
   await db()`
     INSERT INTO bookings
-      (id, user_id, room_id, room_name, check_in, check_out, guests, package_id, nights, total_price, deposit, currency, source, provider_ref, transaction_id, status, notes)
+      (id, user_id, room_id, room_name, check_in, check_out, guests, package_id, nights, total_price, deposit, currency, source, provider_ref, transaction_id, status, guest_name, guest_email, guest_phone, guest_address, notes)
     VALUES
       (${booking.id}, ${booking.user_id}, ${booking.room_id}, ${booking.room_name},
        ${booking.check_in}, ${booking.check_out}, ${booking.guests}, ${booking.package_id},
        ${booking.nights}, ${booking.total_price}, ${booking.deposit}, ${booking.currency},
        ${booking.source}, ${booking.provider_ref}, ${booking.transaction_id},
-       ${booking.status}, ${booking.notes})`;
+       ${booking.status}, ${booking.guest_name}, ${booking.guest_email}, ${booking.guest_phone}, ${booking.guest_address}, ${booking.notes})`;
   return booking;
 }
 
@@ -306,13 +318,13 @@ export async function createStaticBookingIfAvailable(
     const booking: Booking = { ...input, id: uid(), created_at: new Date().toISOString() };
     await tx`
       INSERT INTO bookings
-        (id, user_id, room_id, room_name, check_in, check_out, guests, package_id, nights, total_price, deposit, currency, source, provider_ref, transaction_id, status, notes)
+        (id, user_id, room_id, room_name, check_in, check_out, guests, package_id, nights, total_price, deposit, currency, source, provider_ref, transaction_id, status, guest_name, guest_email, guest_phone, guest_address, notes)
       VALUES
         (${booking.id}, ${booking.user_id}, ${booking.room_id}, ${booking.room_name},
          ${booking.check_in}, ${booking.check_out}, ${booking.guests}, ${booking.package_id},
          ${booking.nights}, ${booking.total_price}, ${booking.deposit}, ${booking.currency},
          ${booking.source}, ${booking.provider_ref}, ${booking.transaction_id},
-         ${booking.status}, ${booking.notes})`;
+         ${booking.status}, ${booking.guest_name}, ${booking.guest_email}, ${booking.guest_phone}, ${booking.guest_address}, ${booking.notes})`;
     return booking;
   });
 }

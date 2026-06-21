@@ -31,16 +31,22 @@ const registered = await request("/api/auth/register", {
 });
 expect(registered, 200, "register");
 const userCookie = registered.cookie;
+const guestContact = {
+  guestName: "Smoke Test",
+  guestEmail: email,
+  guestPhone: "0901234567",
+  guestAddress: "Quận 1, Thành phố Hồ Chí Minh",
+};
 expect(await request("/api/auth/me", {}, userCookie), 200, "authenticated session");
 
 expect(await request("/api/bookings", {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ roomId: "deluxe-garden", checkIn: "2020-01-01", checkOut: "2020-01-02", guests: 2 }),
+  body: JSON.stringify({ ...guestContact, roomId: "deluxe-garden", checkIn: "2020-01-01", checkOut: "2020-01-02", guests: 2 }),
 }, userCookie), 400, "booking rejects past dates");
 
 expect(await request("/api/bookings", {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2, packageId: "invalid" }),
+  body: JSON.stringify({ ...guestContact, roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2, packageId: "invalid" }),
 }, userCookie), 400, "booking rejects unknown package");
 
 let firstBooking;
@@ -48,7 +54,7 @@ const createdBookings = [];
 for (let index = 0; index < 8; index += 1) {
   const booked = await request("/api/bookings", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2 }),
+    body: JSON.stringify({ ...guestContact, roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2 }),
   }, userCookie);
   expect(booked, 200, `inventory booking ${index + 1}/8`);
   firstBooking ||= booked.body.booking;
@@ -56,7 +62,7 @@ for (let index = 0; index < 8; index += 1) {
 }
 expect(await request("/api/bookings", {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2 }),
+  body: JSON.stringify({ ...guestContact, roomId: "deluxe-garden", checkIn: "2099-07-10", checkOut: "2099-07-12", guests: 2 }),
 }, userCookie), 409, "inventory prevents overbooking");
 
 expect(await request("/api/bookings", {

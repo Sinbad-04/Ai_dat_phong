@@ -72,6 +72,10 @@ export async function POST(req: Request) {
       provider_ref: pb.prebookId,
       transaction_id: pb.transactionId,
       status: "payment_pending",
+      guest_name: user.name,
+      guest_email: user.email,
+      guest_phone: null,
+      guest_address: null,
       notes: null,
     });
 

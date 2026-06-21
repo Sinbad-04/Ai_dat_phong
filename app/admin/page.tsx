@@ -7,6 +7,7 @@ type AdminBooking = {
   id: string; user_email: string; room_name: string; check_in: string; check_out: string;
   guests: number; nights: number; total_price: number; deposit: number; status: string;
   currency?: string; source?: string;
+  guest_name?: string | null; guest_email?: string | null; guest_phone?: string | null; guest_address?: string | null;
 };
 type AdminUser = { id: string; name: string; email: string; role: string; created_at: string };
 
@@ -116,7 +117,12 @@ export default function AdminPage() {
                 )}
                 {pagedBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-teal/3">
-                    <td className="px-4 py-3 text-ink/70">{b.user_email}</td>
+                    <td className="px-4 py-3 text-ink/70">
+                      <div className="font-medium text-ink">{b.guest_name || b.user_email}</div>
+                      <div className="text-xs">{b.guest_phone || "Chưa có SĐT"}</div>
+                      <div className="text-xs">{b.guest_email || b.user_email}</div>
+                      {b.guest_address && <div className="max-w-52 truncate text-[11px] text-ink/45" title={b.guest_address}>{b.guest_address}</div>}
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       {b.room_name}
                       {b.source === "liteapi" && (
