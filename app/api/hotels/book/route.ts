@@ -42,12 +42,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Đơn thiếu prebookId." }, { status: 400 });
   }
 
-  const { firstName, lastName } = splitName(user.name || user.email);
+  const { firstName, lastName } = splitName(draft.guest_name || user.name || user.email);
   try {
     const result = await book({
       prebookId: draft.provider_ref,
       transactionId: parsed.data.transactionId,
-      holder: { firstName, lastName, email: user.email },
+      holder: { firstName, lastName, email: draft.guest_email || user.email },
     });
     await finalizeBooking(draft.id, result.confirmationCode || result.bookingId || null);
     return NextResponse.json({

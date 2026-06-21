@@ -37,9 +37,17 @@ function CheckoutInner() {
 
   const [phase, setPhase] = useState<"review" | "paying" | "error">("review");
   const [error, setError] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestAddress, setGuestAddress] = useState("");
 
   async function startPayment() {
     setError(null);
+    if (!guestName.trim() || !guestEmail.trim() || !guestPhone.trim() || !guestAddress.trim()) {
+      setError("Vui lòng nhập đầy đủ thông tin người đặt trước khi thanh toán.");
+      return;
+    }
     setPhase("paying");
     try {
       // 1) Prebook ở server -> lấy tham số cho Payment SDK (không có dữ liệu thẻ)
@@ -55,6 +63,10 @@ function CheckoutInner() {
           checkOut: offer.checkOut,
           guests: offer.guests,
           offerToken: offer.offerToken,
+          guestName,
+          guestEmail,
+          guestPhone,
+          guestAddress,
         }),
       });
       if (res.status === 401) return router.push(`/login?next=/checkout`);
@@ -87,6 +99,12 @@ function CheckoutInner() {
       setError("Thiếu thông tin ưu đãi. Vui lòng quay lại trang Khách sạn.");
       setPhase("error");
     }
+    fetch("/api/auth/me").then((response) => response.json()).then((data) => {
+      if (data.user) {
+        setGuestName(data.user.name || "");
+        setGuestEmail(data.user.email || "");
+      }
+    }).catch(() => undefined);
   }, [offer.offerId]);
 
   const nights = Math.max(
@@ -116,6 +134,33 @@ function CheckoutInner() {
         </div>
       </div>
 
+      <div className="card mt-5 p-5">
+        <h2 className="font-display text-xl text-teal">Thông tin người đặt</h2>
+        <p className="mt-1 text-xs text-ink/50">Khách sạn sử dụng thông tin này để xác nhận và liên hệ về đơn.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Họ và tên</label>
+            <input className="field mt-1" value={guestName} onChange={(event) => setGuestName(event.target.value)}
+              autoComplete="name" maxLength={100} placeholder="Nguyễn Văn A" disabled={phase === "paying"} />
+          </div>
+          <div>
+            <label className="label">Số điện thoại</label>
+            <input className="field mt-1" value={guestPhone} onChange={(event) => setGuestPhone(event.target.value)}
+              type="tel" autoComplete="tel" maxLength={20} placeholder="0901 234 567" disabled={phase === "paying"} />
+          </div>
+          <div>
+            <label className="label">Email</label>
+            <input className="field mt-1" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)}
+              type="email" autoComplete="email" maxLength={254} placeholder="email@example.com" disabled={phase === "paying"} />
+          </div>
+          <div>
+            <label className="label">Địa chỉ</label>
+            <input className="field mt-1" value={guestAddress} onChange={(event) => setGuestAddress(event.target.value)}
+              autoComplete="street-address" maxLength={250} placeholder="Quận/Huyện, Tỉnh/Thành phố" disabled={phase === "paying"} />
+          </div>
+        </div>
+      </div>
+
       <p className="mt-4 rounded-xl bg-teal/5 px-4 py-3 text-sm text-ink/70">
         🔒 Thông tin thẻ được nhập trực tiếp trên cổng thanh toán của LiteAPI. Hệ thống An Lành Bay
         không nhận, không lưu dữ liệu thẻ của bạn. (Sandbox dùng thẻ thử 4242 4242 4242 4242, CVV bất
@@ -125,7 +170,8 @@ function CheckoutInner() {
       {error && <p className="mt-4 rounded-xl bg-coral/15 px-4 py-3 text-sm text-coral">{error}</p>}
 
       {phase === "review" && (
-        <button className="btn-gold mt-5" onClick={startPayment}>
+        <button className="btn-gold mt-5 disabled:opacity-50" onClick={startPayment}
+          disabled={!guestName.trim() || !guestEmail.trim() || !guestPhone.trim() || !guestAddress.trim()}>
           Tiến hành thanh toán
         </button>
       )}
