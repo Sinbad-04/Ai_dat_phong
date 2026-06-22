@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "test": "tsx --test tests/validation.test.ts tests/travel-query.test.ts tests/rate-limit.test.ts tests/offer-token.test.ts",
+    "test": "tsx --test tests/validation.test.ts tests/travel-query.test.ts tests/concierge-context.test.ts tests/rate-limit.test.ts tests/offer-token.test.ts",
     "test:smoke": "node scripts/smoke-test.mjs",
     "check": "npm run lint && npm run test && npm run build"
   },

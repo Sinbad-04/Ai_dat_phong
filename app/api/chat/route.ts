@@ -3,29 +3,16 @@ import { z } from "zod";
 import { bootstrap } from "@/lib/bootstrap";
 import { getSessionUser } from "@/lib/auth";
 import { retrieve, contextBlock } from "@/lib/rag";
-import { generate, type ChatMsg } from "@/lib/llm";
+import { analyzeConciergeContext, generate, type ChatMsg } from "@/lib/llm";
+import { buildConciergeContext } from "@/lib/concierge-context";
 import { ROOMS } from "@/lib/data/knowledge";
 import {
   areasForDestination,
-  detectDestination,
-  detectDestinationArea,
   guideForArea,
   guideForDestination,
   hotelMatchesArea,
 } from "@/lib/data/destinations";
 import { isConfigured, searchHotels } from "@/lib/liteapi";
-import {
-  declinesAreaPreference,
-  declinesBudgetFilter,
-  asksAboutDestinationHighlights,
-  asksForRoomRecommendation,
-  hasExplicitTripPurpose,
-  isGreetingOnly,
-  parseGuests,
-  parseMaxNightlyBudget,
-  parseStayDates,
-  wantsDifferentArea,
-} from "@/lib/travel-query";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { createOfferToken } from "@/lib/offer-token";
 
@@ -57,9 +44,15 @@ export async function POST(req: Request) {
   }
 
   const messages = parsed.data.messages as ChatMsg[];
-  const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+  const totalCharacters = messages.reduce((total, message) => total + message.content.length, 0);
+  if (totalCharacters > 30_000) {
+    return NextResponse.json({ error: "Ngữ cảnh hội thoại quá dài" }, { status: 400 });
+  }
+  let conversationContext = buildConciergeContext(messages);
+  conversationContext = await analyzeConciergeContext(conversationContext);
+  const lastUser = conversationContext.lastUserMessage;
 
-  if (isGreetingOnly(lastUser)) {
+  if (conversationContext.intent === "greeting") {
     return NextResponse.json({
       reply: "Chào bạn 👋 Mình là Lành, trợ lý du lịch của An Lành Bay. Hôm nay mình có thể giúp gì cho bạn?",
       mode: "greeting",
@@ -67,43 +60,20 @@ export async function POST(req: Request) {
   }
 
   // KHÁCH SẠN THẬT: thu thập đủ thông tin cơ bản trước khi gọi LiteAPI.
-  const userMessages = messages.filter((message) => message.role === "user").map((message) => message.content);
-  const latestEntry = <T,>(parser: (value: string) => T | null | undefined): { value: T; index: number } | null => {
-    for (let index = userMessages.length - 1; index >= 0; index -= 1) {
-      const parsedValue = parser(userMessages[index]);
-      if (parsedValue !== null && parsedValue !== undefined) return { value: parsedValue, index };
-    }
-    return null;
-  };
-  const latestValue = <T,>(parser: (value: string) => T | null | undefined): T | null => latestEntry(parser)?.value ?? null;
-  const latestIndex = (predicate: (value: string) => boolean): number => {
-    for (let index = userMessages.length - 1; index >= 0; index -= 1) {
-      if (predicate(userMessages[index])) return index;
-    }
-    return -1;
-  };
-  const destinationEntry = latestEntry(detectDestination);
-  const dest = destinationEntry?.value;
-  const areaEntry = latestEntry(detectDestinationArea);
-  const areaSkipIndex = latestIndex(declinesAreaPreference);
-  const area = dest
-    && areaEntry
-    && areaEntry.index >= (destinationEntry?.index ?? -1)
-    && areaEntry.index > areaSkipIndex
-    && areaEntry.value.cityName === dest.cityName
-    && areaEntry.value.countryCode === dest.countryCode
-    ? areaEntry.value
-    : null;
+  const dest = conversationContext.destination;
+  const area = conversationContext.area;
   const availableAreas = dest ? areasForDestination(dest) : [];
-  const skippedArea = areaSkipIndex >= (destinationEntry?.index ?? 0) && areaSkipIndex > (areaEntry?.index ?? -1);
-  const parsedDates = latestValue(parseStayDates);
-  const parsedGuests = latestValue(parseGuests);
-  const budgetEntry = latestEntry(parseMaxNightlyBudget);
-  const budgetSkipIndex = latestIndex(declinesBudgetFilter);
-  const maxNightlyBudget = budgetEntry && budgetEntry.index > budgetSkipIndex ? budgetEntry.value : null;
-  const skippedBudget = budgetSkipIndex > (budgetEntry?.index ?? -1);
+  const skippedArea = conversationContext.flags.skipArea;
+  const parsedDates = conversationContext.stay;
+  const parsedGuests = conversationContext.guests;
+  const maxNightlyBudget = conversationContext.maxNightlyBudget;
+  const skippedBudget = conversationContext.flags.skipBudget;
+  // Chỉ dialogue manager của tác vụ tìm khách sạn mới thu thập slot.
+  // Các câu hỏi chính sách/tư vấn vẫn được chuyển cho prompt chuyên biệt dù
+  // trong lịch sử trước đó đã có một điểm đến.
+  const isHotelSearchFlow = conversationContext.intent === "hotel_search";
 
-  if (dest && wantsDifferentArea(lastUser) && availableAreas.length > 0) {
+  if (dest && isHotelSearchFlow && conversationContext.flags.wantsDifferentArea && availableAreas.length > 0) {
     return NextResponse.json({
       reply: `Được nhé, bạn muốn đổi sang khu vực nào khác tại **${dest.label}**?`,
       mode: "clarify",
@@ -114,7 +84,7 @@ export async function POST(req: Request) {
     });
   }
 
-  if (dest && asksAboutDestinationHighlights(lastUser)) {
+  if (dest && conversationContext.intent === "destination_advice") {
     const guide = area ? guideForArea(area) : guideForDestination(dest);
     const guideLabel = area ? `${area.label}, ${dest.label}` : dest.label;
     if (guide) {
@@ -133,7 +103,7 @@ export async function POST(req: Request) {
     }
   }
 
-  if (dest && availableAreas.length > 0 && !area && !skippedArea) {
+  if (dest && isHotelSearchFlow && availableAreas.length > 0 && !area && !skippedArea) {
     return NextResponse.json({
       reply:
         `Bạn muốn ở khu vực nào tại **${dest.label}**? Chọn một khu vực bên dưới để mình tìm sát nhu cầu hơn.`,
@@ -144,14 +114,14 @@ export async function POST(req: Request) {
 
   const locationLabel = area ? `${area.label}, ${dest?.label}` : dest?.label;
 
-  if (dest && !parsedDates) {
+  if (dest && isHotelSearchFlow && !parsedDates) {
     return NextResponse.json({
       reply: `Bạn dự định **nhận phòng và trả phòng ngày nào** tại ${locationLabel}? Ví dụ: “10/07 đến 12/07”.`,
       mode: "clarify",
     });
   }
 
-  if (dest && !parsedGuests) {
+  if (dest && isHotelSearchFlow && !parsedGuests) {
     return NextResponse.json({
       reply: "Chuyến đi của bạn có bao nhiêu khách? Nếu có trẻ em, bạn ghi rõ giúp mình nhé.",
       mode: "clarify",
@@ -159,7 +129,7 @@ export async function POST(req: Request) {
     });
   }
 
-  if (dest && !maxNightlyBudget && !skippedBudget) {
+  if (dest && isHotelSearchFlow && !maxNightlyBudget && !skippedBudget) {
     return NextResponse.json({
       reply: "Bạn muốn ngân sách phòng tối đa khoảng bao nhiêu mỗi đêm?",
       mode: "clarify",
@@ -172,7 +142,7 @@ export async function POST(req: Request) {
     });
   }
 
-  if (dest && isConfigured()) {
+  if (dest && isHotelSearchFlow && isConfigured()) {
     const checkIn = parsedDates!.checkIn;
     const checkOut = parsedDates!.checkOut;
     const nights = Math.max(1, Math.round((+new Date(checkOut) - +new Date(checkIn)) / 86_400_000));
@@ -290,15 +260,18 @@ export async function POST(req: Request) {
   const context = contextBlock(docs);
 
   // GENERATION
-  const { text, mode } = await generate(context, messages);
+  const { text, mode } = await generate(context, conversationContext.recentTurns, {
+    task: conversationContext.intent,
+    structuredContext: conversationContext,
+  });
 
   // Gợi ý phòng để hiển thị thẻ: ưu tiên phòng được nhắc tên trong câu trả lời,
   // sau đó tới phòng nằm trong tri thức truy xuất.
   const assistantAskedPurpose = messages.slice(0, -1).some(
     (message) => message.role === "assistant" && /kiểu du lịch|mục đích chuyến đi/i.test(message.content)
   );
-  const shouldSuggestRooms = asksForRoomRecommendation(lastUser)
-    || (hasExplicitTripPurpose(lastUser) && assistantAskedPurpose);
+  const shouldSuggestRooms = conversationContext.intent === "room_recommendation"
+    || (!!conversationContext.purpose && assistantAskedPurpose);
   const mentioned = shouldSuggestRooms
     ? ROOMS.filter((r) => text.toLowerCase().includes(r.name.toLowerCase())).map((r) => r.id)
     : [];
