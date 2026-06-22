@@ -47,3 +47,22 @@ test("a new destination does not retain an area from the previous destination", 
   assert.equal(context.area, null);
   assert.equal(context.missingSlots.includes("area"), true);
 });
+
+test("extracts relative dates from the original request and allows a later topic switch", () => {
+  const bookingContext = buildConciergeContext(
+    [{ role: "user", content: "Tôi muốn book 1 phòng 2 người tới Đà Nẵng trong 2 ngày bắt đầu từ ngày 22 tháng này" }],
+    { now: new Date("2026-06-22T00:00:00Z") }
+  );
+  assert.equal(bookingContext.guests, 2);
+  assert.deepEqual(bookingContext.stay, { checkIn: "2026-06-22", checkOut: "2026-06-24" });
+  assert.equal(bookingContext.intent, "hotel_search");
+
+  const switchedContext = buildConciergeContext([
+    { role: "user", content: "Tôi muốn tìm khách sạn ở Đà Nẵng" },
+    { role: "assistant", content: "Bạn muốn nhận phòng ngày nào?" },
+    { role: "user", content: "Bạn có biết lập trình không?" },
+  ]);
+  assert.equal(switchedContext.destination?.label, "Đà Nẵng");
+  assert.equal(switchedContext.intent, "out_of_scope");
+  assert.equal(switchedContext.flags.topicChanged, true);
+});

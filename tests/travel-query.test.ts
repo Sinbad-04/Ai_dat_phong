@@ -6,6 +6,8 @@ import {
   asksAboutDestinationHighlights,
   asksForRoomRecommendation,
   hasExplicitTripPurpose,
+  hasHotelSearchSignal,
+  isClearlyOutOfScope,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
@@ -74,4 +76,21 @@ test("parses ISO and Vietnamese date ranges", () => {
     checkIn: "2026-07-10",
     checkOut: "2026-07-12",
   });
+  assert.deepEqual(
+    parseStayDates("book 1 phòng trong 2 ngày bắt đầu từ ngày 22 tháng này", new Date("2026-06-22T00:00:00Z")),
+    { checkIn: "2026-06-22", checkOut: "2026-06-24" }
+  );
+  assert.deepEqual(parseStayDates("ngày mai ở 3 đêm", new Date("2026-06-22T00:00:00Z")), {
+    checkIn: "2026-06-23",
+    checkOut: "2026-06-26",
+  });
+});
+
+test("distinguishes hotel-search replies from an unrelated topic switch", () => {
+  assert.equal(hasHotelSearchSignal("Biển Mỹ Khê"), false);
+  assert.equal(hasHotelSearchSignal("2 người"), true);
+  assert.equal(hasHotelSearchSignal("không quá 2 triệu/đêm"), true);
+  assert.equal(hasHotelSearchSignal("bạn có biết lập trình không?"), false);
+  assert.equal(hasHotelSearchSignal("tư vấn đi"), true);
+  assert.equal(isClearlyOutOfScope("bạn có biết lập trình Python không?"), true);
 });

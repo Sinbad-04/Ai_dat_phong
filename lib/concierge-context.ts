@@ -11,6 +11,8 @@ import {
   asksForRoomRecommendation,
   declinesAreaPreference,
   declinesBudgetFilter,
+  hasHotelSearchSignal,
+  isClearlyOutOfScope,
   isGreetingOnly,
   parseGuests,
   parseMaxNightlyBudget,
@@ -25,6 +27,7 @@ export const conciergeIntentSchema = z.enum([
   "room_recommendation",
   "policy_question",
   "booking_help",
+  "out_of_scope",
   "general",
 ]);
 export type ConciergeIntent = z.infer<typeof conciergeIntentSchema>;
@@ -57,7 +60,12 @@ export const conciergeContextSchema = z.object({
   preferences: z.array(z.string().max(100)).max(10),
   availableAreas: z.array(z.string()).max(20),
   missingSlots: z.array(z.enum(["area", "dates", "guests", "budget"])),
-  flags: z.object({ skipArea: z.boolean(), skipBudget: z.boolean(), wantsDifferentArea: z.boolean() }),
+  flags: z.object({
+    skipArea: z.boolean(),
+    skipBudget: z.boolean(),
+    wantsDifferentArea: z.boolean(),
+    topicChanged: z.boolean(),
+  }),
   recentTurns: z.array(turnSchema).max(10),
 });
 export type ConciergeContext = z.infer<typeof conciergeContextSchema>;
@@ -93,16 +101,24 @@ function fallbackIntent(lastUser: string, destination: Destination | null): Conc
   if (isGreetingOnly(lastUser)) return "greeting";
   if (asksAboutDestinationHighlights(lastUser)) return "destination_advice";
   if (asksForRoomRecommendation(lastUser)) return "room_recommendation";
-  if (/huỷ|hủy|trẻ em|thú cưng|thanh toán|đặt cọc|check-?in|check-?out/i.test(normalized)) return "policy_question";
   if (/đặt phòng|đơn của tôi|đặt thế nào|thanh toán thế nào/i.test(normalized)) return "booking_help";
-  if (destination) return "hotel_search";
+  if (/huỷ|hủy|trẻ em|thú cưng|thanh toán|đặt cọc|check-?in|check-?out/i.test(normalized)) return "policy_question";
+  if (isClearlyOutOfScope(lastUser)) return "out_of_scope";
+  // Không dùng điểm đến cũ để mặc định mọi tin nhắn mới là tìm khách sạn.
+  // Tin nhắn hiện tại phải thực sự chứa một tín hiệu tiếp tục luồng đặt phòng.
+  if (destination && (detectDestination(lastUser) || detectDestinationArea(lastUser) || hasHotelSearchSignal(lastUser))) {
+    return "hotel_search";
+  }
   return "general";
 }
 
-export function buildConciergeContext(messages: Message[]): ConciergeContext {
+export function buildConciergeContext(messages: Message[], options: { now?: Date } = {}): ConciergeContext {
   const cleanMessages = messages.map((message) => ({ ...message, content: message.content.trim() })).filter((message) => message.content);
   const userMessages = cleanMessages.filter((message) => message.role === "user").map((message) => message.content);
   const lastUserMessage = userMessages.at(-1) || "";
+  const previousAssistantMessage = [...cleanMessages]
+    .reverse()
+    .find((message) => message.role === "assistant")?.content || "";
 
   const destinationEntry = latestEntry(userMessages, detectDestination);
   const destination = (destinationEntry?.value || null) as Destination | null;
@@ -121,9 +137,13 @@ export function buildConciergeContext(messages: Message[]): ConciergeContext {
   const budgetSkipIndex = latestIndex(userMessages, declinesBudgetFilter);
   const maxNightlyBudget = budgetEntry && budgetEntry.index > budgetSkipIndex ? budgetEntry.value : null;
   const skipBudget = budgetSkipIndex > (budgetEntry?.index ?? -1);
-  const stay = latestEntry(userMessages, parseStayDates)?.value || null;
+  const stay = latestEntry(userMessages, (value) => parseStayDates(value, options.now))?.value || null;
   const guests = latestEntry(userMessages, parseGuests)?.value || null;
   const availableAreas = destination ? areasForDestination(destination).map((item) => item.label) : [];
+  const intent = fallbackIntent(lastUserMessage, destination);
+  const previousTurnWasHotelFlow = /khu vực nào|nhận phòng|trả phòng|bao nhiêu khách|ngân sách|đặt phòng/i
+    .test(previousAssistantMessage);
+  const topicChanged = intent === "out_of_scope" && !!destination && previousTurnWasHotelFlow;
   const missingSlots: ConciergeContext["missingSlots"] = [];
   if (destination && availableAreas.length > 0 && !area && !skipArea) missingSlots.push("area");
   if (destination && !stay) missingSlots.push("dates");
@@ -132,7 +152,7 @@ export function buildConciergeContext(messages: Message[]): ConciergeContext {
 
   return conciergeContextSchema.parse({
     version: 1,
-    intent: fallbackIntent(lastUserMessage, destination),
+    intent,
     lastUserMessage,
     destination,
     area,
@@ -143,7 +163,7 @@ export function buildConciergeContext(messages: Message[]): ConciergeContext {
     preferences: detectPreferences(userMessages),
     availableAreas,
     missingSlots,
-    flags: { skipArea, skipBudget, wantsDifferentArea: wantsDifferentArea(lastUserMessage) },
+    flags: { skipArea, skipBudget, wantsDifferentArea: wantsDifferentArea(lastUserMessage), topicChanged },
     recentTurns: cleanMessages.slice(-10).map((message) => ({ ...message, content: message.content.slice(0, 1_000) })),
   });
 }

@@ -71,6 +71,26 @@ export function asksForRoomRecommendation(text: string): boolean {
   ].some((intent) => value.includes(intent));
 }
 
+export function hasHotelSearchSignal(text: string): boolean {
+  const value = normalize(text);
+  return (
+    asksForRoomRecommendation(text) ||
+    declinesAreaPreference(text) ||
+    declinesBudgetFilter(text) ||
+    wantsDifferentArea(text) ||
+    parseGuests(text) !== null ||
+    parseMaxNightlyBudget(text) !== null ||
+    parseStayDates(text) !== null ||
+    /\b(khach san|hotel|resort|villa|phong|book|tu van|tim cho o|re hon|doi ngay|doi khu|loai khac)\b/.test(value)
+  );
+}
+
+export function isClearlyOutOfScope(text: string): boolean {
+  const value = normalize(text);
+  return /\b(lap trinh|code|source code|javascript|typescript|python|java|c\+\+|bong da|chinh tri|chung khoan|tien ao)\b/
+    .test(value);
+}
+
 export function parseMaxNightlyBudget(text: string): number | null {
   const match = normalize(text).match(
     /(?:<=|<|duoi|toi da|khong qua|nho hon)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k|vnd|d)?\b/i
@@ -96,6 +116,12 @@ function ymd(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function addDays(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return ymd(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+}
+
 export function parseStayDates(text: string, now = new Date()): { checkIn: string; checkOut: string } | null {
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\D+(20\d{2}-\d{2}-\d{2})\b/);
   if (iso && !validateStayDates(iso[1], iso[2]).error) return { checkIn: iso[1], checkOut: iso[2] };
@@ -111,6 +137,43 @@ export function parseStayDates(text: string, now = new Date()): { checkIn: strin
       checkOut = ymd(year, Number(compact[3]), Number(compact[2]));
     }
     if (!validateStayDates(checkIn, checkOut).error) return { checkIn, checkOut };
+  }
+
+  // Cách nói tự nhiên: "ở 2 ngày bắt đầu từ ngày 22 tháng này" hoặc
+  // "ngày mai ở 3 đêm". Số ngày/đêm được hiểu là số đêm lưu trú.
+  const normalized = normalize(text);
+  const durationMatch = normalized.match(/\b(?:trong|o|luu tru|book|dat)?\s*(\d{1,2})\s*(?:ngay|dem)\b/);
+  const duration = Number(durationMatch?.[1] || 0);
+  if (duration >= 1 && duration <= 30) {
+    let checkIn: string | null = null;
+    if (/\bngay mai\b/.test(normalized)) {
+      checkIn = addDays(ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()), 1);
+    } else if (/\bhom nay\b/.test(normalized)) {
+      checkIn = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    } else {
+      const startMatch = normalized.match(
+        /(?:bat dau\s*(?:tu)?|nhan phong\s*(?:tu)?|check-?in\s*(?:tu)?|tu)?\s*(?:ngay\s*)?(\d{1,2})\s*thang\s*(nay|sau|\d{1,2})(?:\s*nam\s*(20\d{2}))?/
+      );
+      if (startMatch) {
+        const day = Number(startMatch[1]);
+        const monthToken = startMatch[2];
+        let month = monthToken === "nay"
+          ? now.getMonth() + 1
+          : monthToken === "sau"
+            ? now.getMonth() + 2
+            : Number(monthToken);
+        let year = Number(startMatch[3] || now.getFullYear());
+        if (month > 12) {
+          month -= 12;
+          year += 1;
+        }
+        checkIn = ymd(year, month, day);
+      }
+    }
+    if (checkIn) {
+      const checkOut = addDays(checkIn, duration);
+      if (!validateStayDates(checkIn, checkOut).error) return { checkIn, checkOut };
+    }
   }
 
   const matches = Array.from(text.matchAll(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/g));

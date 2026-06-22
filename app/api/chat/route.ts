@@ -49,13 +49,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Ngữ cảnh hội thoại quá dài" }, { status: 400 });
   }
   let conversationContext = buildConciergeContext(messages);
-  conversationContext = await analyzeConciergeContext(conversationContext);
+  if (!["greeting", "out_of_scope"].includes(conversationContext.intent)) {
+    conversationContext = await analyzeConciergeContext(conversationContext);
+  }
   const lastUser = conversationContext.lastUserMessage;
 
   if (conversationContext.intent === "greeting") {
     return NextResponse.json({
       reply: "Chào bạn 👋 Mình là Lành, trợ lý du lịch của An Lành Bay. Hôm nay mình có thể giúp gì cho bạn?",
       mode: "greeting",
+    });
+  }
+
+  if (conversationContext.intent === "out_of_scope") {
+    return NextResponse.json({
+      reply:
+        "Mình chỉ hỗ trợ tư vấn điểm đến, tìm khách sạn, chọn phòng và quy trình đặt phòng. " +
+        "Bạn cần mình tìm chỗ ở tại địa điểm nào?",
+      mode: "out-of-scope",
     });
   }
 
@@ -255,12 +266,18 @@ export async function POST(req: Request) {
   }
 
   // RETRIEVAL: lấy tri thức liên quan tới câu hỏi mới nhất (kèm chút ngữ cảnh trước đó)
+  const needsResortKnowledge = ["room_recommendation", "policy_question", "booking_help"].includes(
+    conversationContext.intent
+  );
   const recentContext = messages.slice(-4).map((m) => m.content).join(" ");
-  const docs = retrieve(recentContext || lastUser, 5);
+  const docs = needsResortKnowledge ? retrieve(recentContext || lastUser, 5) : [];
   const context = contextBlock(docs);
 
   // GENERATION
-  const { text, mode } = await generate(context, conversationContext.recentTurns, {
+  const generationMessages: ChatMsg[] = conversationContext.flags.topicChanged
+    ? [{ role: "user", content: lastUser }]
+    : conversationContext.recentTurns;
+  const { text, mode } = await generate(context, generationMessages, {
     task: conversationContext.intent,
     structuredContext: conversationContext,
   });
