@@ -66,3 +66,17 @@ test("extracts relative dates from the original request and allows a later topic
   assert.equal(switchedContext.intent, "out_of_scope");
   assert.equal(switchedContext.flags.topicChanged, true);
 });
+
+test("keeps an explicit request to change area in the hotel-search flow", () => {
+  const context = buildConciergeContext([
+    { role: "user", content: "Đà Nẵng có gì hay?" },
+    { role: "assistant", content: "Bạn muốn ở khu vực nào?" },
+    { role: "user", content: "Trung tâm Hải Châu" },
+    { role: "assistant", content: "Hải Châu thuận tiện ăn uống và mua sắm." },
+    { role: "user", content: "Chỗ khác đi" },
+  ]);
+
+  assert.equal(context.intent, "hotel_search");
+  assert.equal(context.flags.wantsDifferentArea, true);
+  assert.equal(context.area?.value, "hai-chau");
+});

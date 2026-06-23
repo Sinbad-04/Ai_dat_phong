@@ -176,3 +176,96 @@ export function withIntent(context: ConciergeContext, intent: ConciergeIntent, p
     preferences: preferences?.length ? Array.from(new Set([...context.preferences, ...preferences])).slice(0, 10) : context.preferences,
   });
 }
+
+
+function isoDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(v + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? null : v;
+}
+
+// Hợp nhất slot do LLM trích xuất (JSON) lên context rule-base. LLM là nguồn chính;
+// giá trị nào LLM không chắc thì giữ theo parser. Có kiểm định để không nhận dữ liệu rác.
+export function applyLlmSlots(
+  baseline: ConciergeContext,
+  raw: Record<string, unknown>,
+): ConciergeContext {
+  let destination = baseline.destination;
+  if (typeof raw.destinationCity === "string" && raw.destinationCity.trim()) {
+    const d = detectDestination(raw.destinationCity);
+    if (d) destination = d as Destination;
+  }
+
+  let area = baseline.area;
+  if (destination && typeof raw.area === "string" && raw.area.trim()) {
+    const a = detectDestinationArea(raw.area);
+    if (a && a.cityName === destination.cityName && a.countryCode === destination.countryCode) {
+      area = a as DestinationArea;
+    }
+  }
+
+  let stay = baseline.stay;
+  const ci = isoDate(raw.checkIn);
+  const co = isoDate(raw.checkOut);
+  if (ci && co && co > ci) stay = { checkIn: ci, checkOut: co };
+
+  let guests = baseline.guests;
+  if (typeof raw.guests === "number" && raw.guests >= 1 && raw.guests <= 9) {
+    guests = Math.round(raw.guests);
+  }
+
+  let maxNightlyBudget = baseline.maxNightlyBudget;
+  if (typeof raw.maxNightlyBudget === "number" && raw.maxNightlyBudget > 0) {
+    maxNightlyBudget = raw.maxNightlyBudget;
+  }
+
+  const skipArea = typeof raw.skipArea === "boolean" ? raw.skipArea : baseline.flags.skipArea;
+  const skipBudget = typeof raw.skipBudget === "boolean" ? raw.skipBudget : baseline.flags.skipBudget;
+
+  let intent = baseline.intent;
+  const parsedIntent = conciergeIntentSchema.safeParse(raw.intent);
+  if (parsedIntent.success) intent = parsedIntent.data;
+
+  const purpose =
+    typeof raw.purpose === "string" && raw.purpose.trim()
+      ? raw.purpose.trim().slice(0, 100)
+      : baseline.purpose;
+
+  const preferences = Array.isArray(raw.preferences)
+    ? Array.from(
+        new Set([
+          ...baseline.preferences,
+          ...(raw.preferences as unknown[])
+            .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+            .map((p) => p.trim().slice(0, 100)),
+        ]),
+      ).slice(0, 10)
+    : baseline.preferences;
+
+  const availableAreas = destination
+    ? areasForDestination(destination).map((item) => item.label)
+    : [];
+
+  const missingSlots: ConciergeContext["missingSlots"] = [];
+  if (destination && availableAreas.length > 0 && !area && !skipArea) missingSlots.push("area");
+  if (destination && !stay) missingSlots.push("dates");
+  if (destination && !guests) missingSlots.push("guests");
+  if (destination && !maxNightlyBudget && !skipBudget) missingSlots.push("budget");
+
+  return conciergeContextSchema.parse({
+    ...baseline,
+    intent,
+    destination,
+    area,
+    stay,
+    guests,
+    maxNightlyBudget,
+    purpose,
+    preferences,
+    availableAreas,
+    missingSlots,
+    flags: { ...baseline.flags, skipArea, skipBudget },
+  });
+}
