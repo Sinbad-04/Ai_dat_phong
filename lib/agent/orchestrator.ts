@@ -64,12 +64,23 @@ function demoFallback(history: ChatMsg[]): ConciergeResult {
   };
 }
 
-export async function runConcierge(history: ChatMsg[]): Promise<ConciergeResult> {
+export type RunConciergeOptions = {
+  /** Bộ nhớ khách quen (tóm tắt từ log/đặt phòng trước) để chèn vào ngữ cảnh. */
+  memory?: string;
+};
+
+export async function runConcierge(
+  history: ChatMsg[],
+  options: RunConciergeOptions = {}
+): Promise<ConciergeResult> {
   if (!hasLlm()) return demoFallback(history);
 
   const ctx = createToolContext();
+  const system = options.memory
+    ? `${systemPrompt()}\n\n${options.memory}`
+    : systemPrompt();
   const messages: AgentMessage[] = [
-    { role: "system", content: systemPrompt() },
+    { role: "system", content: system },
     ...history.map((m) => ({ role: m.role, content: m.content }) as AgentMessage),
   ];
 

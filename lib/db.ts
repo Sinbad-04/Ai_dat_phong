@@ -48,6 +48,17 @@ export type Booking = {
   created_at: string;
 };
 
+// Log hội thoại của trợ lý "Lành": lưu lại để khi khách quay lại còn nhớ & đề xuất tiếp.
+export type ChatLog = {
+  id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 const HAS_DB = !!process.env.DATABASE_URL;
 
 // ---- Kết nối Postgres (singleton, an toàn cho serverless) ----
@@ -65,10 +76,17 @@ function db() {
 
 // ---- Bộ nhớ tạm (dev fallback) ----
 const g = globalThis as unknown as {
-  __mem?: { users: User[]; bookings: Booking[]; resetTokens: PasswordResetToken[]; ready: boolean };
+  __mem?: {
+    users: User[];
+    bookings: Booking[];
+    resetTokens: PasswordResetToken[];
+    chatLogs: ChatLog[];
+    ready: boolean;
+  };
 };
 function mem() {
-  if (!g.__mem) g.__mem = { users: [], bookings: [], resetTokens: [], ready: false };
+  if (!g.__mem)
+    g.__mem = { users: [], bookings: [], resetTokens: [], chatLogs: [], ready: false };
   return g.__mem;
 }
 
@@ -144,6 +162,17 @@ export async function ensureSchema() {
   await s`ALTER TABLE bookings ALTER COLUMN room_id DROP NOT NULL`;
   await s`ALTER TABLE bookings ALTER COLUMN package_id DROP NOT NULL`;
   await s`CREATE UNIQUE INDEX IF NOT EXISTS bookings_transaction_id_unique ON bookings(transaction_id) WHERE transaction_id IS NOT NULL`;
+  await s`
+    CREATE TABLE IF NOT EXISTS conversation_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      mode TEXT,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+  await s`CREATE INDEX IF NOT EXISTS conversation_logs_user_idx ON conversation_logs(user_id, created_at)`;
 }
 
 // ---- Users ----
@@ -419,6 +448,55 @@ export async function finalizeBooking(
     UPDATE bookings
     SET status = 'confirmed', notes = COALESCE(${confirmation ? `Mã xác nhận: ${confirmation}` : null}, notes)
     WHERE id = ${id}`;
+}
+
+// ---- Log hội thoại (để trợ lý nhớ khách quen & đề xuất lại) ----
+export async function appendChatLog(entry: {
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<void> {
+  const log: ChatLog = {
+    id: uid(),
+    user_id: entry.user_id,
+    role: entry.role,
+    content: entry.content,
+    mode: entry.mode ?? null,
+    metadata: entry.metadata ?? null,
+    created_at: new Date().toISOString(),
+  };
+  if (!HAS_DB) {
+    const m = mem();
+    m.chatLogs.push(log);
+    // Giữ gọn bộ nhớ tạm: tối đa 200 dòng/khách
+    const mine = m.chatLogs.filter((l) => l.user_id === log.user_id);
+    if (mine.length > 200) {
+      const drop = new Set(mine.slice(0, mine.length - 200).map((l) => l.id));
+      m.chatLogs = m.chatLogs.filter((l) => !drop.has(l.id));
+    }
+    return;
+  }
+  await db()`
+    INSERT INTO conversation_logs (id, user_id, role, content, mode, metadata)
+    VALUES (${log.id}, ${log.user_id}, ${log.role}, ${log.content}, ${log.mode},
+            ${log.metadata ? db().json(log.metadata as never) : null})`;
+}
+
+// Lấy các lượt trò chuyện gần nhất của khách, trả về theo thứ tự thời gian tăng dần.
+export async function listRecentChatLogs(userId: string, limit = 40): Promise<ChatLog[]> {
+  if (!HAS_DB) {
+    return mem()
+      .chatLogs.filter((l) => l.user_id === userId)
+      .slice(-limit);
+  }
+  const rows = await db()<ChatLog[]>`
+    SELECT * FROM conversation_logs
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT ${limit}`;
+  return rows.reverse();
 }
 
 // Tiện ích: tìm phòng theo id (từ knowledge base)

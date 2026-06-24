@@ -29,7 +29,7 @@ export function todayYmd(timeZone = process.env.APP_TIME_ZONE || "Asia/Ho_Chi_Mi
 export function validateStayDates(
   checkIn: string,
   checkOut: string,
-  options: { allowPast?: boolean; maxNights?: number } = {}
+  options: { allowPast?: boolean; maxNights?: number; today?: string } = {}
 ): { nights: number; error?: string } {
   const start = dateOnlyToUtc(checkIn);
   const end = dateOnlyToUtc(checkOut);
@@ -39,7 +39,7 @@ export function validateStayDates(
   if (nights < 1) return { nights: 0, error: "Ngày trả phòng phải sau ngày nhận phòng" };
   const maxNights = options.maxNights ?? MAX_STAY_NIGHTS;
   if (nights > maxNights) return { nights, error: `Mỗi lần đặt tối đa ${maxNights} đêm` };
-  if (!options.allowPast && checkIn < todayYmd()) {
+  if (!options.allowPast && checkIn < (options.today ?? todayYmd())) {
     return { nights, error: "Ngày nhận phòng không được ở trong quá khứ" };
   }
   return { nights };

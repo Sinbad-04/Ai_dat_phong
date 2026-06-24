@@ -123,20 +123,24 @@ function addDays(value: string, days: number): string {
 }
 
 export function parseStayDates(text: string, now = new Date()): { checkIn: string; checkOut: string } | null {
+  // "Hôm nay" theo mốc thời gian tham chiếu (now) — để phân tích nhất quán với việc kiểm tra hợp lệ.
+  const todayRef = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\D+(20\d{2}-\d{2}-\d{2})\b/);
-  if (iso && !validateStayDates(iso[1], iso[2]).error) return { checkIn: iso[1], checkOut: iso[2] };
+  if (iso && !validateStayDates(iso[1], iso[2], { today: todayRef }).error)
+    return { checkIn: iso[1], checkOut: iso[2] };
 
   const compact = normalize(text).match(/\b(\d{1,2})\s*(?:-|–|—|den|toi)\s*(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/);
   if (compact) {
     let year = Number(compact[4] || now.getFullYear());
     let checkIn = ymd(year, Number(compact[3]), Number(compact[1]));
     let checkOut = ymd(year, Number(compact[3]), Number(compact[2]));
-    if (checkIn < ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()) && !compact[4]) {
+    if (checkIn < todayRef && !compact[4]) {
       year += 1;
       checkIn = ymd(year, Number(compact[3]), Number(compact[1]));
       checkOut = ymd(year, Number(compact[3]), Number(compact[2]));
     }
-    if (!validateStayDates(checkIn, checkOut).error) return { checkIn, checkOut };
+    if (!validateStayDates(checkIn, checkOut, { today: todayRef }).error) return { checkIn, checkOut };
   }
 
   // Cách nói tự nhiên: "ở 2 ngày bắt đầu từ ngày 22 tháng này" hoặc
@@ -147,9 +151,9 @@ export function parseStayDates(text: string, now = new Date()): { checkIn: strin
   if (duration >= 1 && duration <= 30) {
     let checkIn: string | null = null;
     if (/\bngay mai\b/.test(normalized)) {
-      checkIn = addDays(ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()), 1);
+      checkIn = addDays(todayRef, 1);
     } else if (/\bhom nay\b/.test(normalized)) {
-      checkIn = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+      checkIn = todayRef;
     } else {
       const startMatch = normalized.match(
         /(?:bat dau\s*(?:tu)?|nhan phong\s*(?:tu)?|check-?in\s*(?:tu)?|tu)?\s*(?:ngay\s*)?(\d{1,2})\s*thang\s*(nay|sau|\d{1,2})(?:\s*nam\s*(20\d{2}))?/
@@ -172,7 +176,7 @@ export function parseStayDates(text: string, now = new Date()): { checkIn: strin
     }
     if (checkIn) {
       const checkOut = addDays(checkIn, duration);
-      if (!validateStayDates(checkIn, checkOut).error) return { checkIn, checkOut };
+      if (!validateStayDates(checkIn, checkOut, { today: todayRef }).error) return { checkIn, checkOut };
     }
   }
 
@@ -181,10 +185,10 @@ export function parseStayDates(text: string, now = new Date()): { checkIn: strin
   let year = Number(matches[0][3] || matches[1][3] || now.getFullYear());
   let checkIn = ymd(year, Number(matches[0][2]), Number(matches[0][1]));
   let checkOut = ymd(Number(matches[1][3] || year), Number(matches[1][2]), Number(matches[1][1]));
-  if (checkIn < ymd(now.getFullYear(), now.getMonth() + 1, now.getDate()) && !matches[0][3]) {
+  if (checkIn < todayRef && !matches[0][3]) {
     year += 1;
     checkIn = ymd(year, Number(matches[0][2]), Number(matches[0][1]));
     checkOut = ymd(year, Number(matches[1][2]), Number(matches[1][1]));
   }
-  return validateStayDates(checkIn, checkOut).error ? null : { checkIn, checkOut };
+  return validateStayDates(checkIn, checkOut, { today: todayRef }).error ? null : { checkIn, checkOut };
 }
